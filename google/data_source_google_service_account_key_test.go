@@ -25,7 +25,7 @@ func TestAccDatasourceGoogleServiceAccountKey_basic(t *testing.T) {
 		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccDatasourceGoogleServiceAccountKey(account),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleServiceAccountKeyExists(resourceName),
@@ -51,6 +51,6 @@ resource "google_service_account_key" "acceptance" {
 }
 
 data "google_service_account_key" "acceptance" {
-	service_account_id = "${google_service_account_key.acceptance.id}"
+	name = "${google_service_account_key.acceptance.name}"
 }`, account)
 }

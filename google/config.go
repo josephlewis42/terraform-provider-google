@@ -2,19 +2,17 @@ package google
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/hashicorp/terraform/helper/logging"
 	"github.com/hashicorp/terraform/helper/pathorcontents"
-	"github.com/hashicorp/terraform/version"
+	"github.com/hashicorp/terraform/httpclient"
+	"github.com/terraform-providers/terraform-provider-google/version"
 
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-	"golang.org/x/oauth2/jwt"
+	googleoauth "golang.org/x/oauth2/google"
 	appengine "google.golang.org/api/appengine/v1"
 	"google.golang.org/api/bigquery/v2"
 	"google.golang.org/api/cloudbilling/v1"
@@ -24,42 +22,47 @@ import (
 	"google.golang.org/api/cloudkms/v1"
 	"google.golang.org/api/cloudresourcemanager/v1"
 	resourceManagerV2Beta1 "google.golang.org/api/cloudresourcemanager/v2beta1"
+	composer "google.golang.org/api/composer/v1beta1"
 	computeBeta "google.golang.org/api/compute/v0.beta"
 	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/container/v1"
 	containerBeta "google.golang.org/api/container/v1beta1"
-	"google.golang.org/api/dataflow/v1b3"
+	dataflow "google.golang.org/api/dataflow/v1b3"
 	"google.golang.org/api/dataproc/v1"
 	"google.golang.org/api/dns/v1"
 	dnsBeta "google.golang.org/api/dns/v1beta2"
+	file "google.golang.org/api/file/v1beta1"
 	"google.golang.org/api/iam/v1"
 	cloudlogging "google.golang.org/api/logging/v2"
 	"google.golang.org/api/pubsub/v1"
-	"google.golang.org/api/redis/v1beta1"
-	"google.golang.org/api/runtimeconfig/v1beta1"
+	runtimeconfig "google.golang.org/api/runtimeconfig/v1beta1"
 	"google.golang.org/api/servicemanagement/v1"
-	"google.golang.org/api/serviceusage/v1beta1"
+	"google.golang.org/api/serviceusage/v1"
 	"google.golang.org/api/sourcerepo/v1"
 	"google.golang.org/api/spanner/v1"
-	"google.golang.org/api/sqladmin/v1beta4"
+	sqladmin "google.golang.org/api/sqladmin/v1beta4"
 	"google.golang.org/api/storage/v1"
+	"google.golang.org/api/storagetransfer/v1"
 )
 
 // Config is the configuration structure used to instantiate the Google
 // provider.
 type Config struct {
 	Credentials string
+	AccessToken string
 	Project     string
 	Region      string
 	Zone        string
+	Scopes      []string
 
 	client    *http.Client
 	userAgent string
 
 	tokenSource oauth2.TokenSource
 
-	clientBilling                *cloudbilling.Service
+	clientBilling                *cloudbilling.APIService
 	clientBuild                  *cloudbuild.Service
+	clientComposer               *composer.Service
 	clientCompute                *compute.Service
 	clientComputeBeta            *computeBeta.Service
 	clientContainer              *container.Service
@@ -68,10 +71,10 @@ type Config struct {
 	clientDataflow               *dataflow.Service
 	clientDns                    *dns.Service
 	clientDnsBeta                *dnsBeta.Service
+	clientFilestore              *file.Service
 	clientKms                    *cloudkms.Service
 	clientLogging                *cloudlogging.Service
 	clientPubsub                 *pubsub.Service
-	clientRedis                  *redis.Service
 	clientResourceManager        *cloudresourcemanager.Service
 	clientResourceManagerV2Beta1 *resourceManagerV2Beta1.Service
 	clientRuntimeconfig          *runtimeconfig.Service
@@ -81,83 +84,44 @@ type Config struct {
 	clientSqlAdmin               *sqladmin.Service
 	clientIAM                    *iam.Service
 	clientServiceMan             *servicemanagement.APIService
-	clientServiceUsage           *serviceusage.APIService
+	clientServiceUsage           *serviceusage.Service
 	clientBigQuery               *bigquery.Service
 	clientCloudFunctions         *cloudfunctions.Service
 	clientCloudIoT               *cloudiot.Service
 	clientAppEngine              *appengine.APIService
+	clientStorageTransfer        *storagetransfer.Service
 
 	bigtableClientFactory *BigtableClientFactory
 }
 
+var defaultClientScopes = []string{
+	"https://www.googleapis.com/auth/compute",
+	"https://www.googleapis.com/auth/cloud-platform",
+	"https://www.googleapis.com/auth/ndev.clouddns.readwrite",
+	"https://www.googleapis.com/auth/devstorage.full_control",
+}
+
 func (c *Config) loadAndValidate() error {
-	var account accountFile
-	clientScopes := []string{
-		"https://www.googleapis.com/auth/compute",
-		"https://www.googleapis.com/auth/cloud-platform",
-		"https://www.googleapis.com/auth/ndev.clouddns.readwrite",
-		"https://www.googleapis.com/auth/devstorage.full_control",
+	if len(c.Scopes) == 0 {
+		c.Scopes = defaultClientScopes
 	}
 
-	var client *http.Client
-	var tokenSource oauth2.TokenSource
-
-	if c.Credentials != "" {
-		contents, _, err := pathorcontents.Read(c.Credentials)
-		if err != nil {
-			return fmt.Errorf("Error loading credentials: %s", err)
-		}
-
-		// Assume account_file is a JSON string
-		if err := parseJSON(&account, contents); err != nil {
-			return fmt.Errorf("Error parsing credentials '%s': %s", contents, err)
-		}
-
-		// Get the token for use in our requests
-		log.Printf("[INFO] Requesting Google token...")
-		log.Printf("[INFO]   -- Email: %s", account.ClientEmail)
-		log.Printf("[INFO]   -- Scopes: %s", clientScopes)
-		log.Printf("[INFO]   -- Private Key Length: %d", len(account.PrivateKey))
-
-		conf := jwt.Config{
-			Email:      account.ClientEmail,
-			PrivateKey: []byte(account.PrivateKey),
-			Scopes:     clientScopes,
-			TokenURL:   "https://accounts.google.com/o/oauth2/token",
-		}
-
-		// Initiate an http.Client. The following GET request will be
-		// authorized and authenticated on the behalf of
-		// your service account.
-		client = conf.Client(context.Background())
-
-		tokenSource = conf.TokenSource(context.Background())
-	} else {
-		log.Printf("[INFO] Authenticating using DefaultClient")
-		err := error(nil)
-		client, err = google.DefaultClient(context.Background(), clientScopes...)
-		if err != nil {
-			return err
-		}
-
-		tokenSource, err = google.DefaultTokenSource(context.Background(), clientScopes...)
-		if err != nil {
-			return err
-		}
+	tokenSource, err := c.getTokenSource(c.Scopes)
+	if err != nil {
+		return err
 	}
-
 	c.tokenSource = tokenSource
 
+	client := oauth2.NewClient(context.Background(), tokenSource)
 	client.Transport = logging.NewTransport("Google", client.Transport)
 
-	projectURL := "https://www.terraform.io"
-	userAgent := fmt.Sprintf("Terraform/%s (+%s)",
-		version.String(), projectURL)
+	terraformVersion := httpclient.UserAgentString()
+	providerVersion := fmt.Sprintf("terraform-provider-google/%s", version.ProviderVersion)
+	terraformWebsite := "(+https://www.terraform.io)"
+	userAgent := fmt.Sprintf("%s %s %s", terraformVersion, terraformWebsite, providerVersion)
 
 	c.client = client
 	c.userAgent = userAgent
-
-	var err error
 
 	log.Printf("[INFO] Instantiating GCE client...")
 	c.clientCompute, err = compute.New(client)
@@ -242,13 +206,6 @@ func (c *Config) loadAndValidate() error {
 		return err
 	}
 	c.clientDataflow.UserAgent = userAgent
-
-	log.Printf("[INFO] Instantiating Google Cloud Redis Client...")
-	c.clientRedis, err = redis.New(client)
-	if err != nil {
-		return err
-	}
-	c.clientRedis.UserAgent = userAgent
 
 	log.Printf("[INFO] Instantiating Google Cloud ResourceManager Client...")
 	c.clientResourceManager, err = cloudresourcemanager.New(client)
@@ -346,6 +303,12 @@ func (c *Config) loadAndValidate() error {
 	}
 	c.clientDataproc.UserAgent = userAgent
 
+	c.clientFilestore, err = file.New(client)
+	if err != nil {
+		return err
+	}
+	c.clientFilestore.UserAgent = userAgent
+
 	log.Printf("[INFO] Instantiating Google Cloud IoT Core Client...")
 	c.clientCloudIoT, err = cloudiot.New(client)
 	if err != nil {
@@ -360,20 +323,53 @@ func (c *Config) loadAndValidate() error {
 	}
 	c.clientAppEngine.UserAgent = userAgent
 
+	log.Printf("[INFO] Instantiating Cloud Composer Client...")
+	c.clientComposer, err = composer.New(client)
+	if err != nil {
+		return err
+	}
+	c.clientComposer.UserAgent = userAgent
+
+	log.Printf("[INFO] Instantiating Google Cloud Storage Transfer Client...")
+	c.clientStorageTransfer, err = storagetransfer.New(client)
+	if err != nil {
+		return err
+	}
+	c.clientStorageTransfer.UserAgent = userAgent
+
 	return nil
 }
 
-// accountFile represents the structure of the account file JSON file.
-type accountFile struct {
-	PrivateKeyId string `json:"private_key_id"`
-	PrivateKey   string `json:"private_key"`
-	ClientEmail  string `json:"client_email"`
-	ClientId     string `json:"client_id"`
-}
+func (c *Config) getTokenSource(clientScopes []string) (oauth2.TokenSource, error) {
+	if c.AccessToken != "" {
+		contents, _, err := pathorcontents.Read(c.AccessToken)
+		if err != nil {
+			return nil, fmt.Errorf("Error loading access token: %s", err)
+		}
 
-func parseJSON(result interface{}, contents string) error {
-	r := strings.NewReader(contents)
-	dec := json.NewDecoder(r)
+		log.Printf("[INFO] Authenticating using configured Google JSON 'access_token'...")
+		log.Printf("[INFO]   -- Scopes: %s", clientScopes)
+		token := &oauth2.Token{AccessToken: contents}
+		return oauth2.StaticTokenSource(token), nil
+	}
 
-	return dec.Decode(result)
+	if c.Credentials != "" {
+		contents, _, err := pathorcontents.Read(c.Credentials)
+		if err != nil {
+			return nil, fmt.Errorf("Error loading credentials: %s", err)
+		}
+
+		creds, err := googleoauth.CredentialsFromJSON(context.Background(), []byte(contents), clientScopes...)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to parse credentials from '%s': %s", contents, err)
+		}
+
+		log.Printf("[INFO] Authenticating using configured Google JSON 'credentials'...")
+		log.Printf("[INFO]   -- Scopes: %s", clientScopes)
+		return creds.TokenSource, nil
+	}
+
+	log.Printf("[INFO] Authenticating using DefaultClient...")
+	log.Printf("[INFO]   -- Scopes: %s", clientScopes)
+	return googleoauth.DefaultTokenSource(context.Background(), clientScopes...)
 }

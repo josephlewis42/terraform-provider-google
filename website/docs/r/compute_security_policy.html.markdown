@@ -12,8 +12,6 @@ A Security Policy defines an IP blacklist or whitelist that protects load balanc
 see the [official documentation](https://cloud.google.com/armor/docs/configure-security-policies)
 and the [API](https://cloud.google.com/compute/docs/reference/rest/beta/securityPolicies).
 
-~> **Note:** This entire resource is in [Beta](/docs/providers/google/index.html#beta-features)
-
 ## Example Usage
 
 ```hcl
@@ -26,7 +24,7 @@ resource "google_compute_security_policy" "policy" {
     match {
       versioned_expr = "SRC_IPS_V1"
       config {
-        src_ip_ranges = ["9.9.9.9/32"]
+        src_ip_ranges = ["9.9.9.0/24"]
       }
     }
     description = "Deny access to IPs in 9.9.9.0/24"

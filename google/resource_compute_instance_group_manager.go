@@ -25,49 +25,55 @@ func resourceComputeInstanceGroupManager() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"base_instance_name": &schema.Schema{
+			"base_instance_name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"instance_template": &schema.Schema{
+			"instance_template": {
 				Type:             schema.TypeString,
-				Optional:         true,
+				Required:         true,
 				DiffSuppressFunc: compareSelfLinkRelativePaths,
 			},
 
-			"version": &schema.Schema{
+			"version": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Computed: true,
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"name": &schema.Schema{
+						"name": {
 							Type:     schema.TypeString,
 							Required: true,
+							Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 						},
 
-						"instance_template": &schema.Schema{
+						"instance_template": {
 							Type:             schema.TypeString,
 							Required:         true,
+							Removed:          "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 							DiffSuppressFunc: compareSelfLinkRelativePaths,
 						},
 
-						"target_size": &schema.Schema{
+						"target_size": {
 							Type:     schema.TypeList,
 							Optional: true,
+							Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"fixed": &schema.Schema{
+									"fixed": {
 										Type:     schema.TypeInt,
 										Optional: true,
+										Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 									},
 
-									"percent": &schema.Schema{
+									"percent": {
 										Type:         schema.TypeInt,
 										Optional:     true,
+										Removed:      "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 										ValidateFunc: validation.IntBetween(0, 100),
 									},
 								},
@@ -77,46 +83,46 @@ func resourceComputeInstanceGroupManager() *schema.Resource {
 				},
 			},
 
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"zone": &schema.Schema{
+			"zone": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
 			},
 
-			"description": &schema.Schema{
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"fingerprint": &schema.Schema{
+			"fingerprint": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"instance_group": &schema.Schema{
+			"instance_group": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"named_port": &schema.Schema{
-				Type:     schema.TypeList,
+			"named_port": {
+				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"name": &schema.Schema{
+						"name": {
 							Type:     schema.TypeString,
 							Required: true,
 						},
 
-						"port": &schema.Schema{
+						"port": {
 							Type:     schema.TypeInt,
 							Required: true,
 						},
@@ -124,26 +130,35 @@ func resourceComputeInstanceGroupManager() *schema.Resource {
 				},
 			},
 
-			"project": &schema.Schema{
+			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 				Computed: true,
 			},
 
-			"self_link": &schema.Schema{
+			"self_link": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"update_strategy": &schema.Schema{
+			"update_strategy": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				Default:      "RESTART",
-				ValidateFunc: validation.StringInSlice([]string{"RESTART", "NONE", "ROLLING_UPDATE"}, false),
+				Default:      "REPLACE",
+				ValidateFunc: validation.StringInSlice([]string{"RESTART", "NONE", "ROLLING_UPDATE", "REPLACE"}, false),
+				DiffSuppressFunc: func(key, old, new string, d *schema.ResourceData) bool {
+					if old == "REPLACE" && new == "RESTART" {
+						return true
+					}
+					if old == "RESTART" && new == "REPLACE" {
+						return true
+					}
+					return false
+				},
 			},
 
-			"target_pools": &schema.Schema{
+			"target_pools": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -152,81 +167,88 @@ func resourceComputeInstanceGroupManager() *schema.Resource {
 				Set: selfLinkRelativePathHash,
 			},
 
-			"target_size": &schema.Schema{
+			"target_size": {
 				Type:     schema.TypeInt,
 				Computed: true,
 				Optional: true,
 			},
 
-			"auto_healing_policies": &schema.Schema{
+			"auto_healing_policies": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"health_check": &schema.Schema{
+						"health_check": {
 							Type:             schema.TypeString,
 							Required:         true,
+							Removed:          "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 							DiffSuppressFunc: compareSelfLinkRelativePaths,
 						},
 
-						"initial_delay_sec": &schema.Schema{
+						"initial_delay_sec": {
 							Type:         schema.TypeInt,
 							Required:     true,
+							Removed:      "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 							ValidateFunc: validation.IntBetween(0, 3600),
 						},
 					},
 				},
 			},
 
-			"rolling_update_policy": &schema.Schema{
+			"rolling_update_policy": {
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+				Computed: true,
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"minimal_action": &schema.Schema{
+						"minimal_action": {
 							Type:         schema.TypeString,
 							Required:     true,
+							Removed:      "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 							ValidateFunc: validation.StringInSlice([]string{"RESTART", "REPLACE"}, false),
 						},
 
-						"type": &schema.Schema{
+						"type": {
 							Type:         schema.TypeString,
 							Required:     true,
+							Removed:      "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 							ValidateFunc: validation.StringInSlice([]string{"OPPORTUNISTIC", "PROACTIVE"}, false),
 						},
 
-						"max_surge_fixed": &schema.Schema{
-							Type:          schema.TypeInt,
-							Optional:      true,
-							Default:       1,
-							ConflictsWith: []string{"rolling_update_policy.0.max_surge_percent"},
+						"max_surge_fixed": {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Computed: true,
+							Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 						},
 
-						"max_surge_percent": &schema.Schema{
-							Type:          schema.TypeInt,
-							Optional:      true,
-							ConflictsWith: []string{"rolling_update_policy.0.max_surge_fixed"},
-							ValidateFunc:  validation.IntBetween(0, 100),
-						},
-
-						"max_unavailable_fixed": &schema.Schema{
-							Type:          schema.TypeInt,
-							Optional:      true,
-							Default:       1,
-							ConflictsWith: []string{"rolling_update_policy.0.max_unavailable_percent"},
-						},
-
-						"max_unavailable_percent": &schema.Schema{
-							Type:          schema.TypeInt,
-							Optional:      true,
-							ConflictsWith: []string{"rolling_update_policy.0.max_unavailable_fixed"},
-							ValidateFunc:  validation.IntBetween(0, 100),
-						},
-
-						"min_ready_sec": &schema.Schema{
+						"max_surge_percent": {
 							Type:         schema.TypeInt,
+							Optional:     true,
+							Removed:      "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+							ValidateFunc: validation.IntBetween(0, 100),
+						},
+
+						"max_unavailable_fixed": {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+						},
+
+						"max_unavailable_percent": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Removed:      "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+							ValidateFunc: validation.IntBetween(0, 100),
+						},
+
+						"min_ready_sec": {
+							Type:         schema.TypeInt,
+							Removed:      "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 							Optional:     true,
 							ValidateFunc: validation.IntBetween(0, 3600),
 						},
@@ -234,7 +256,7 @@ func resourceComputeInstanceGroupManager() *schema.Resource {
 				},
 			},
 
-			"wait_for_instances": &schema.Schema{
+			"wait_for_instances": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
@@ -282,21 +304,15 @@ func resourceComputeInstanceGroupManagerCreate(d *schema.ResourceData, meta inte
 		return err
 	}
 
-	if _, ok := d.GetOk("rolling_update_policy"); d.Get("update_strategy") == "ROLLING_UPDATE" && !ok {
-		return fmt.Errorf("[rolling_update_policy] must be set when 'update_strategy' is set to 'ROLLING_UPDATE'")
-	}
-
 	// Build the parameter
 	manager := &computeBeta.InstanceGroupManager{
-		Name:                d.Get("name").(string),
-		Description:         d.Get("description").(string),
-		BaseInstanceName:    d.Get("base_instance_name").(string),
-		InstanceTemplate:    d.Get("instance_template").(string),
-		TargetSize:          int64(d.Get("target_size").(int)),
-		NamedPorts:          getNamedPortsBeta(d.Get("named_port").([]interface{})),
-		TargetPools:         convertStringSet(d.Get("target_pools").(*schema.Set)),
-		AutoHealingPolicies: expandAutoHealingPolicies(d.Get("auto_healing_policies").([]interface{})),
-		Versions:            expandVersions(d.Get("version").([]interface{})),
+		Name:             d.Get("name").(string),
+		Description:      d.Get("description").(string),
+		BaseInstanceName: d.Get("base_instance_name").(string),
+		InstanceTemplate: d.Get("instance_template").(string),
+		TargetSize:       int64(d.Get("target_size").(int)),
+		NamedPorts:       getNamedPortsBeta(d.Get("named_port").(*schema.Set).List()),
+		TargetPools:      convertStringSet(d.Get("target_pools").(*schema.Set)),
 		// Force send TargetSize to allow a value of 0.
 		ForceSendFields: []string{"TargetSize"},
 	}
@@ -310,7 +326,11 @@ func resourceComputeInstanceGroupManagerCreate(d *schema.ResourceData, meta inte
 	}
 
 	// It probably maybe worked, so store the ID now
-	d.SetId(manager.Name)
+	id, err := replaceVars(d, config, "{{project}}/{{zone}}/{{name}}")
+	if err != nil {
+		return err
+	}
+	d.SetId(id)
 
 	// Wait for the operation to complete
 	err = computeSharedOperationWait(config.clientCompute, op, project, "Creating InstanceGroupManager")
@@ -333,66 +353,23 @@ func flattenNamedPortsBeta(namedPorts []*computeBeta.NamedPort) []map[string]int
 
 }
 
-func flattenVersions(versions []*computeBeta.InstanceGroupManagerVersion) []map[string]interface{} {
-	result := make([]map[string]interface{}, 0, len(versions))
-	for _, version := range versions {
-		versionMap := make(map[string]interface{})
-		versionMap["name"] = version.Name
-		versionMap["instance_template"] = ConvertSelfLinkToV1(version.InstanceTemplate)
-		versionMap["target_size"] = flattenFixedOrPercent(version.TargetSize)
-		result = append(result, versionMap)
-	}
-
-	return result
-}
-
-func flattenFixedOrPercent(fixedOrPercent *computeBeta.FixedOrPercent) []map[string]interface{} {
-	result := make(map[string]interface{})
-	if value := fixedOrPercent.Percent; value > 0 {
-		result["percent"] = value
-	} else if value := fixedOrPercent.Fixed; value > 0 {
-		result["fixed"] = fixedOrPercent.Fixed
-	} else {
-		return []map[string]interface{}{}
-	}
-	return []map[string]interface{}{result}
-}
-
 func getManager(d *schema.ResourceData, meta interface{}) (*computeBeta.InstanceGroupManager, error) {
 	config := meta.(*Config)
+	if err := parseImportId([]string{"(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+		return nil, err
+	}
 
 	project, err := getProject(d, config)
 	if err != nil {
 		return nil, err
 	}
 
-	region, err := getRegion(d, config)
+	zone, _ := getZone(d, config)
+	name := d.Get("name").(string)
+
+	manager, err := config.clientComputeBeta.InstanceGroupManagers.Get(project, zone, name).Do()
 	if err != nil {
-		return nil, err
-	}
-
-	getInstanceGroupManager := func(zone string) (interface{}, error) {
-		return config.clientComputeBeta.InstanceGroupManagers.Get(project, zone, d.Id()).Do()
-	}
-
-	var manager *computeBeta.InstanceGroupManager
-	var e error
-	if zone, _ := getZone(d, config); zone != "" {
-		manager, e = config.clientComputeBeta.InstanceGroupManagers.Get(project, zone, d.Id()).Do()
-
-		if e != nil {
-			return nil, handleNotFoundError(e, d, fmt.Sprintf("Instance Group Manager %q", d.Get("name").(string)))
-		}
-	} else {
-		// If the resource was imported, the only info we have is the ID. Try to find the resource
-		// by searching in the region of the project.
-		var resource interface{}
-		resource, e = getZonalBetaResourceFromRegion(getInstanceGroupManager, region, config.clientComputeBeta, project)
-		if e != nil {
-			return nil, e
-		}
-
-		manager = resource.(*computeBeta.InstanceGroupManager)
+		return nil, handleNotFoundError(err, d, fmt.Sprintf("Instance Group Manager %q", name))
 	}
 
 	if manager == nil {
@@ -414,31 +391,41 @@ func resourceComputeInstanceGroupManagerRead(d *schema.ResourceData, meta interf
 	}
 
 	manager, err := getManager(d, meta)
-	if err != nil || manager == nil {
+	if err != nil {
 		return err
+	}
+	if manager == nil {
+		log.Printf("[WARN] Instance Group Manager %q not found, removing from state.", d.Id())
+		d.SetId("")
+		return nil
 	}
 
 	d.Set("base_instance_name", manager.BaseInstanceName)
 	d.Set("instance_template", ConvertSelfLinkToV1(manager.InstanceTemplate))
-	if err := d.Set("version", flattenVersions(manager.Versions)); err != nil {
-		return err
-	}
 	d.Set("name", manager.Name)
 	d.Set("zone", GetResourceNameFromSelfLink(manager.Zone))
 	d.Set("description", manager.Description)
 	d.Set("project", project)
 	d.Set("target_size", manager.TargetSize)
-	d.Set("target_pools", manager.TargetPools)
-	d.Set("named_port", flattenNamedPortsBeta(manager.NamedPorts))
+	if err = d.Set("target_pools", manager.TargetPools); err != nil {
+		return fmt.Errorf("Error setting target_pools in state: %s", err.Error())
+	}
+	if err = d.Set("named_port", flattenNamedPortsBeta(manager.NamedPorts)); err != nil {
+		return fmt.Errorf("Error setting named_port in state: %s", err.Error())
+	}
 	d.Set("fingerprint", manager.Fingerprint)
 	d.Set("instance_group", ConvertSelfLinkToV1(manager.InstanceGroup))
 	d.Set("self_link", ConvertSelfLinkToV1(manager.SelfLink))
+
 	update_strategy, ok := d.GetOk("update_strategy")
 	if !ok {
-		update_strategy = "RESTART"
+		update_strategy = "REPLACE"
 	}
 	d.Set("update_strategy", update_strategy.(string))
-	d.Set("auto_healing_policies", flattenAutoHealingPolicies(manager.AutoHealingPolicies))
+
+	// When we make a list Removed, we see a permadiff from `field_name.#: "" => "<computed>"`. Set to nil in Read so we see no diff.
+	d.Set("version", nil)
+	d.Set("rolling_update_policy", nil)
 
 	if d.Get("wait_for_instances").(bool) {
 		conf := resource.StateChangeConf{
@@ -456,11 +443,11 @@ func resourceComputeInstanceGroupManagerRead(d *schema.ResourceData, meta interf
 	return nil
 }
 
-// Updates an instance group manager by applying an update strategy (REPLACE, RESTART) respecting a rolling update policy (availability settings,
-// interval between updates, and particularly, the type of update PROACTIVE or OPPORTUNISTIC because updates performed by API are considered
-// OPPORTUNISTIC by default)
-func performUpdate(config *Config, id string, updateStrategy string, rollingUpdatePolicy *computeBeta.InstanceGroupManagerUpdatePolicy, versions []*computeBeta.InstanceGroupManagerVersion, project string, zone string) error {
-	if updateStrategy == "RESTART" {
+// Updates an instance group manager by applying the update strategy (REPLACE, RESTART)
+// and rolling update policy (PROACTIVE, OPPORTUNISTIC). Updates performed by API
+// are OPPORTUNISTIC by default.
+func performZoneUpdate(config *Config, id string, updateStrategy string, project string, zone string) error {
+	if updateStrategy == "RESTART" || updateStrategy == "REPLACE" {
 		managedInstances, err := config.clientComputeBeta.InstanceGroupManagers.ListManagedInstances(project, zone, id).Do()
 		if err != nil {
 			return fmt.Errorf("Error getting instance group managers instances: %s", err)
@@ -488,49 +475,25 @@ func performUpdate(config *Config, id string, updateStrategy string, rollingUpda
 		}
 	}
 
-	if updateStrategy == "ROLLING_UPDATE" {
-		// UpdatePolicy is set for InstanceGroupManager on update only, because it is only relevant for `Patch` calls.
-		// Other tools(gcloud and UI) capable of executing the same `ROLLING UPDATE` call
-		// expect those values to be provided by user as part of the call
-		// or provide their own defaults without respecting what was previously set on UpdateManager.
-		// To follow the same logic, we provide policy values on relevant update change only.
-		manager := &computeBeta.InstanceGroupManager{
-			UpdatePolicy: rollingUpdatePolicy,
-			Versions:     versions,
-		}
-
-		op, err := config.clientComputeBeta.InstanceGroupManagers.Patch(project, zone, id, manager).Do()
-		if err != nil {
-			return fmt.Errorf("Error updating managed group instances: %s", err)
-		}
-
-		err = computeSharedOperationWait(config.clientCompute, op, project, "Updating managed group instances")
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
 func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
+	if err := parseImportId([]string{"(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+		return err
+	}
+
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
 
-	zone, err := getZone(d, config)
-	if err != nil {
-		return err
-	}
+	zone, _ := getZone(d, config)
+	name := d.Get("name").(string)
 
 	d.Partial(true)
-
-	if _, ok := d.GetOk("rolling_update_policy"); d.Get("update_strategy") == "ROLLING_UPDATE" && !ok {
-		return fmt.Errorf("[rolling_update_policy] must be set when 'update_strategy' is set to 'ROLLING_UPDATE'")
-	}
 
 	// If target_pools changes then update
 	if d.HasChange("target_pools") {
@@ -543,7 +506,7 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 		}
 
 		op, err := config.clientComputeBeta.InstanceGroupManagers.SetTargetPools(
-			project, zone, d.Id(), setTargetPools).Do()
+			project, zone, name, setTargetPools).Do()
 
 		if err != nil {
 			return fmt.Errorf("Error updating InstanceGroupManager: %s", err)
@@ -562,14 +525,14 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 	if d.HasChange("named_port") {
 
 		// Build the parameters for a "SetNamedPorts" request:
-		namedPorts := getNamedPortsBeta(d.Get("named_port").([]interface{}))
+		namedPorts := getNamedPortsBeta(d.Get("named_port").(*schema.Set).List())
 		setNamedPorts := &computeBeta.InstanceGroupsSetNamedPortsRequest{
 			NamedPorts: namedPorts,
 		}
 
 		// Make the request:
 		op, err := config.clientComputeBeta.InstanceGroups.SetNamedPorts(
-			project, zone, d.Id(), setNamedPorts).Do()
+			project, zone, name, setNamedPorts).Do()
 
 		if err != nil {
 			return fmt.Errorf("Error updating InstanceGroupManager: %s", err)
@@ -587,7 +550,7 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 	if d.HasChange("target_size") {
 		targetSize := int64(d.Get("target_size").(int))
 		op, err := config.clientComputeBeta.InstanceGroupManagers.Resize(
-			project, zone, d.Id(), targetSize).Do()
+			project, zone, name, targetSize).Do()
 
 		if err != nil {
 			return fmt.Errorf("Error updating InstanceGroupManager: %s", err)
@@ -602,29 +565,6 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 		d.SetPartial("target_size")
 	}
 
-	// We will always be in v0beta inside this conditional
-	if d.HasChange("auto_healing_policies") {
-		setAutoHealingPoliciesRequest := &computeBeta.InstanceGroupManagersSetAutoHealingRequest{}
-		if v, ok := d.GetOk("auto_healing_policies"); ok {
-			setAutoHealingPoliciesRequest.AutoHealingPolicies = expandAutoHealingPolicies(v.([]interface{}))
-		}
-
-		op, err := config.clientComputeBeta.InstanceGroupManagers.SetAutoHealingPolicies(
-			project, zone, d.Id(), setAutoHealingPoliciesRequest).Do()
-
-		if err != nil {
-			return fmt.Errorf("Error updating AutoHealingPolicies: %s", err)
-		}
-
-		// Wait for the operation to complete
-		err = computeSharedOperationWait(config.clientCompute, op, project, "Updating AutoHealingPolicies")
-		if err != nil {
-			return err
-		}
-
-		d.SetPartial("auto_healing_policies")
-	}
-
 	// If instance_template changes then update
 	if d.HasChange("instance_template") {
 		// Build the parameter
@@ -632,7 +572,7 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 			InstanceTemplate: d.Get("instance_template").(string),
 		}
 
-		op, err := config.clientComputeBeta.InstanceGroupManagers.SetInstanceTemplate(project, zone, d.Id(), setInstanceTemplate).Do()
+		op, err := config.clientComputeBeta.InstanceGroupManagers.SetInstanceTemplate(project, zone, name, setInstanceTemplate).Do()
 
 		if err != nil {
 			return fmt.Errorf("Error updating InstanceGroupManager: %s", err)
@@ -645,22 +585,11 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 		}
 
 		updateStrategy := d.Get("update_strategy").(string)
-		rollingUpdatePolicy := expandUpdatePolicy(d.Get("rolling_update_policy").([]interface{}))
-		err = performUpdate(config, d.Id(), updateStrategy, rollingUpdatePolicy, nil, project, zone)
-		d.SetPartial("instance_template")
-	}
-
-	// If version changes then update
-	if d.HasChange("version") {
-		updateStrategy := d.Get("update_strategy").(string)
-		rollingUpdatePolicy := expandUpdatePolicy(d.Get("rolling_update_policy").([]interface{}))
-		versions := expandVersions(d.Get("version").([]interface{}))
-		err = performUpdate(config, d.Id(), updateStrategy, rollingUpdatePolicy, versions, project, zone)
+		err = performZoneUpdate(config, name, updateStrategy, project, zone)
 		if err != nil {
 			return err
 		}
-
-		d.SetPartial("version")
+		d.SetPartial("instance_template")
 	}
 
 	d.Partial(false)
@@ -671,22 +600,23 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 func resourceComputeInstanceGroupManagerDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
+	if err := parseImportId([]string{"(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+		return err
+	}
 	project, err := getProject(d, config)
 	if err != nil {
 		return err
 	}
 
-	zone, err := getZone(d, config)
-	if err != nil {
-		return err
-	}
+	zone, _ := getZone(d, config)
+	name := d.Get("name").(string)
 
-	op, err := config.clientComputeBeta.InstanceGroupManagers.Delete(project, zone, d.Id()).Do()
+	op, err := config.clientComputeBeta.InstanceGroupManagers.Delete(project, zone, name).Do()
 	attempt := 0
 	for err != nil && attempt < 20 {
 		attempt++
 		time.Sleep(2000 * time.Millisecond)
-		op, err = config.clientComputeBeta.InstanceGroupManagers.Delete(project, zone, d.Id()).Do()
+		op, err = config.clientComputeBeta.InstanceGroupManagers.Delete(project, zone, name).Do()
 	}
 
 	if err != nil {
@@ -703,9 +633,9 @@ func resourceComputeInstanceGroupManagerDelete(d *schema.ResourceData, meta inte
 			return err
 		}
 
-		instanceGroup, err := config.clientComputeBeta.InstanceGroups.Get(
-			project, zone, d.Id()).Do()
-		if err != nil {
+		instanceGroup, igErr := config.clientComputeBeta.InstanceGroups.Get(
+			project, zone, name).Do()
+		if igErr != nil {
 			return fmt.Errorf("Error getting instance group size: %s", err)
 		}
 
@@ -715,7 +645,7 @@ func resourceComputeInstanceGroupManagerDelete(d *schema.ResourceData, meta inte
 			return fmt.Errorf("Error, instance group isn't shrinking during delete")
 		}
 
-		log.Printf("[INFO] timeout occured, but instance group is shrinking (%d < %d)", instanceGroupSize, currentSize)
+		log.Printf("[INFO] timeout occurred, but instance group is shrinking (%d < %d)", instanceGroupSize, currentSize)
 		currentSize = instanceGroupSize
 		err = computeSharedOperationWait(config.clientCompute, op, project, "Deleting InstanceGroupManager")
 	}
@@ -724,107 +654,19 @@ func resourceComputeInstanceGroupManagerDelete(d *schema.ResourceData, meta inte
 	return nil
 }
 
-func expandAutoHealingPolicies(configured []interface{}) []*computeBeta.InstanceGroupManagerAutoHealingPolicy {
-	autoHealingPolicies := make([]*computeBeta.InstanceGroupManagerAutoHealingPolicy, 0, len(configured))
-	for _, raw := range configured {
-		data := raw.(map[string]interface{})
-		autoHealingPolicy := computeBeta.InstanceGroupManagerAutoHealingPolicy{
-			HealthCheck:     data["health_check"].(string),
-			InitialDelaySec: int64(data["initial_delay_sec"].(int)),
-		}
-
-		autoHealingPolicies = append(autoHealingPolicies, &autoHealingPolicy)
-	}
-	return autoHealingPolicies
-}
-
-func expandVersions(configured []interface{}) []*computeBeta.InstanceGroupManagerVersion {
-	versions := make([]*computeBeta.InstanceGroupManagerVersion, 0, len(configured))
-	for _, raw := range configured {
-		data := raw.(map[string]interface{})
-
-		version := computeBeta.InstanceGroupManagerVersion{
-			Name:             data["name"].(string),
-			InstanceTemplate: data["instance_template"].(string),
-			TargetSize:       expandFixedOrPercent(data["target_size"].([]interface{})),
-		}
-
-		versions = append(versions, &version)
-	}
-	return versions
-}
-
-func expandFixedOrPercent(configured []interface{}) *computeBeta.FixedOrPercent {
-	fixedOrPercent := &computeBeta.FixedOrPercent{}
-
-	for _, raw := range configured {
-		data := raw.(map[string]interface{})
-		if percent := data["percent"]; percent.(int) > 0 {
-			fixedOrPercent.Percent = int64(percent.(int))
-		} else {
-			fixedOrPercent.Fixed = int64(data["fixed"].(int))
-			fixedOrPercent.ForceSendFields = []string{"Fixed"}
-		}
-	}
-	return fixedOrPercent
-}
-
-func expandUpdatePolicy(configured []interface{}) *computeBeta.InstanceGroupManagerUpdatePolicy {
-	updatePolicy := &computeBeta.InstanceGroupManagerUpdatePolicy{}
-
-	for _, raw := range configured {
-		data := raw.(map[string]interface{})
-
-		updatePolicy.MinimalAction = data["minimal_action"].(string)
-		updatePolicy.Type = data["type"].(string)
-
-		// percent and fixed values are conflicting
-		// when the percent values are set, the fixed values will be ignored
-		if v := data["max_surge_percent"]; v.(int) > 0 {
-			updatePolicy.MaxSurge = &computeBeta.FixedOrPercent{
-				Percent: int64(v.(int)),
-			}
-		} else {
-			updatePolicy.MaxSurge = &computeBeta.FixedOrPercent{
-				Fixed: int64(data["max_surge_fixed"].(int)),
-				// allow setting this value to 0
-				ForceSendFields: []string{"Fixed"},
-			}
-		}
-
-		if v := data["max_unavailable_percent"]; v.(int) > 0 {
-			updatePolicy.MaxUnavailable = &computeBeta.FixedOrPercent{
-				Percent: int64(v.(int)),
-			}
-		} else {
-			updatePolicy.MaxUnavailable = &computeBeta.FixedOrPercent{
-				Fixed: int64(data["max_unavailable_fixed"].(int)),
-				// allow setting this value to 0
-				ForceSendFields: []string{"Fixed"},
-			}
-		}
-
-		if v, ok := data["min_ready_sec"]; ok {
-			updatePolicy.MinReadySec = int64(v.(int))
-		}
-	}
-	return updatePolicy
-}
-
-func flattenAutoHealingPolicies(autoHealingPolicies []*computeBeta.InstanceGroupManagerAutoHealingPolicy) []map[string]interface{} {
-	autoHealingPoliciesSchema := make([]map[string]interface{}, 0, len(autoHealingPolicies))
-	for _, autoHealingPolicy := range autoHealingPolicies {
-		data := map[string]interface{}{
-			"health_check":      autoHealingPolicy.HealthCheck,
-			"initial_delay_sec": autoHealingPolicy.InitialDelaySec,
-		}
-
-		autoHealingPoliciesSchema = append(autoHealingPoliciesSchema, data)
-	}
-	return autoHealingPoliciesSchema
-}
-
 func resourceInstanceGroupManagerStateImporter(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	d.Set("wait_for_instances", false)
+	config := meta.(*Config)
+	if err := parseImportId([]string{"(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+		return nil, err
+	}
+
+	// Replace import id for the resource id
+	id, err := replaceVars(d, config, "{{project}}/{{zone}}/{{name}}")
+	if err != nil {
+		return nil, fmt.Errorf("Error constructing id: %s", err)
+	}
+	d.SetId(id)
+
 	return []*schema.ResourceData{d}, nil
 }

@@ -36,24 +36,24 @@ func resourceContainerNodePool() *schema.Resource {
 		Schema: mergeSchemas(
 			schemaNodePool,
 			map[string]*schema.Schema{
-				"project": &schema.Schema{
+				"project": {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
 					ForceNew: true,
 				},
-				"zone": &schema.Schema{
+				"zone": {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
 					ForceNew: true,
 				},
-				"cluster": &schema.Schema{
+				"cluster": {
 					Type:     schema.TypeString,
 					Required: true,
 					ForceNew: true,
 				},
-				"region": &schema.Schema{
+				"region": {
 					Type:     schema.TypeString,
 					Optional: true,
 					ForceNew: true,
@@ -63,19 +63,19 @@ func resourceContainerNodePool() *schema.Resource {
 }
 
 var schemaNodePool = map[string]*schema.Schema{
-	"autoscaling": &schema.Schema{
+	"autoscaling": {
 		Type:     schema.TypeList,
 		Optional: true,
 		MaxItems: 1,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"min_node_count": &schema.Schema{
+				"min_node_count": {
 					Type:         schema.TypeInt,
 					Required:     true,
 					ValidateFunc: validation.IntAtLeast(0),
 				},
 
-				"max_node_count": &schema.Schema{
+				"max_node_count": {
 					Type:         schema.TypeInt,
 					Required:     true,
 					ValidateFunc: validation.IntAtLeast(1),
@@ -84,7 +84,15 @@ var schemaNodePool = map[string]*schema.Schema{
 		},
 	},
 
-	"initial_node_count": &schema.Schema{
+	"max_pods_per_node": {
+		Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+		Type:     schema.TypeInt,
+		Optional: true,
+		ForceNew: true,
+		Computed: true,
+	},
+
+	"initial_node_count": {
 		Type:     schema.TypeInt,
 		Optional: true,
 		ForceNew: true,
@@ -119,20 +127,18 @@ var schemaNodePool = map[string]*schema.Schema{
 		},
 	},
 
-	"name": &schema.Schema{
+	"name": {
 		Type:     schema.TypeString,
 		Optional: true,
 		Computed: true,
 		ForceNew: true,
 	},
 
-	"name_prefix": &schema.Schema{
+	"name_prefix": {
 		Type:     schema.TypeString,
 		Optional: true,
 		Computed: true,
 		ForceNew: true,
-		Deprecated: "Use the random provider instead. See migration instructions at " +
-			"https://github.com/terraform-providers/terraform-provider-google/issues/1054#issuecomment-377390209",
 	},
 
 	"node_config": schemaNodeConfig,
@@ -243,9 +249,9 @@ func resourceContainerNodePoolCreate(d *schema.ResourceData, meta interface{}) e
 
 	d.SetId(fmt.Sprintf("%s/%s/%s", nodePoolInfo.location, nodePoolInfo.cluster, nodePool.Name))
 
-	waitErr := containerBetaOperationWait(config,
+	waitErr := containerOperationWait(config,
 		operation, nodePoolInfo.project,
-		nodePoolInfo.location, "creating GKE NodePool", int(timeout.Minutes()), 3)
+		nodePoolInfo.location, "creating GKE NodePool", int(timeout.Minutes()))
 
 	if waitErr != nil {
 		// The resource didn't actually create
@@ -361,7 +367,7 @@ func resourceContainerNodePoolDelete(d *schema.ResourceData, meta interface{}) e
 	}
 
 	// Wait until it's deleted
-	waitErr := containerBetaOperationWait(config, op, nodePoolInfo.project, nodePoolInfo.location, "deleting GKE NodePool", timeoutInMinutes, 2)
+	waitErr := containerOperationWait(config, op, nodePoolInfo.project, nodePoolInfo.location, "deleting GKE NodePool", timeoutInMinutes)
 	if waitErr != nil {
 		return waitErr
 	}
@@ -420,6 +426,9 @@ func resourceContainerNodePoolStateImporter(d *schema.ResourceData, meta interfa
 
 		d.Set("cluster", parts[2])
 		d.Set("name", parts[3])
+
+		// override the inputted ID with the <location>/<cluster>/<name> format
+		d.SetId(strings.Join(parts[1:], "/"))
 	default:
 		return nil, fmt.Errorf("Invalid container cluster specifier. Expecting {zone}/{cluster}/{name} or {project}/{zone}/{cluster}/{name}")
 	}
@@ -513,7 +522,7 @@ func flattenNodePool(d *schema.ResourceData, config *Config, np *containerBeta.N
 
 	if np.Autoscaling != nil && np.Autoscaling.Enabled {
 		nodePool["autoscaling"] = []map[string]interface{}{
-			map[string]interface{}{
+			{
 				"min_node_count": np.Autoscaling.MinNodeCount,
 				"max_node_count": np.Autoscaling.MaxNodeCount,
 			},
@@ -566,10 +575,10 @@ func nodePoolUpdate(d *schema.ResourceData, meta interface{}, nodePoolInfo *Node
 			}
 
 			// Wait until it's updated
-			return containerBetaOperationWait(config, op,
+			return containerOperationWait(config, op,
 				nodePoolInfo.project,
 				nodePoolInfo.location, "updating GKE node pool",
-				timeoutInMinutes, 2)
+				timeoutInMinutes)
 		}
 
 		// Call update serially.
@@ -581,6 +590,41 @@ func nodePoolUpdate(d *schema.ResourceData, meta interface{}, nodePoolInfo *Node
 
 		if prefix == "" {
 			d.SetPartial("autoscaling")
+		}
+	}
+
+	if d.HasChange(prefix + "node_config") {
+		if d.HasChange(prefix + "node_config.0.image_type") {
+			req := &containerBeta.UpdateClusterRequest{
+				Update: &containerBeta.ClusterUpdate{
+					DesiredNodePoolId: name,
+					DesiredImageType:  d.Get(prefix + "node_config.0.image_type").(string),
+				},
+			}
+
+			updateF := func() error {
+				op, err := config.clientContainerBeta.Projects.Locations.Clusters.Update(nodePoolInfo.parent(), req).Do()
+				if err != nil {
+					return err
+				}
+
+				// Wait until it's updated
+				return containerOperationWait(config, op,
+					nodePoolInfo.project,
+					nodePoolInfo.location, "updating GKE node pool",
+					timeoutInMinutes)
+			}
+
+			// Call update serially.
+			if err := lockedCall(lockKey, updateF); err != nil {
+				return err
+			}
+
+			log.Printf("[INFO] Updated image type in Node Pool %s", d.Id())
+		}
+
+		if prefix == "" {
+			d.SetPartial("node_config")
 		}
 	}
 
@@ -597,10 +641,10 @@ func nodePoolUpdate(d *schema.ResourceData, meta interface{}, nodePoolInfo *Node
 			}
 
 			// Wait until it's updated
-			return containerBetaOperationWait(config, op,
+			return containerOperationWait(config, op,
 				nodePoolInfo.project,
 				nodePoolInfo.location, "updating GKE node pool size",
-				timeoutInMinutes, 2)
+				timeoutInMinutes)
 		}
 
 		// Call update serially.
@@ -636,9 +680,9 @@ func nodePoolUpdate(d *schema.ResourceData, meta interface{}, nodePoolInfo *Node
 			}
 
 			// Wait until it's updated
-			return containerBetaOperationWait(config, op,
+			return containerOperationWait(config, op,
 				nodePoolInfo.project,
-				nodePoolInfo.location, "updating GKE node pool management", timeoutInMinutes, 2)
+				nodePoolInfo.location, "updating GKE node pool management", timeoutInMinutes)
 		}
 
 		// Call update serially.
@@ -656,7 +700,7 @@ func nodePoolUpdate(d *schema.ResourceData, meta interface{}, nodePoolInfo *Node
 	if d.HasChange(prefix + "version") {
 		req := &containerBeta.UpdateNodePoolRequest{
 			NodePoolId:  name,
-			NodeVersion: d.Get("version").(string),
+			NodeVersion: d.Get(prefix + "version").(string),
 		}
 		updateF := func() error {
 			op, err := config.clientContainerBeta.Projects.
@@ -667,9 +711,9 @@ func nodePoolUpdate(d *schema.ResourceData, meta interface{}, nodePoolInfo *Node
 			}
 
 			// Wait until it's updated
-			return containerBetaOperationWait(config, op,
+			return containerOperationWait(config, op,
 				nodePoolInfo.project,
-				nodePoolInfo.location, "updating GKE node pool version", timeoutInMinutes, 2)
+				nodePoolInfo.location, "updating GKE node pool version", timeoutInMinutes)
 		}
 
 		// Call update serially.

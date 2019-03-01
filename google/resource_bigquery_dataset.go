@@ -72,7 +72,26 @@ func resourceBigQueryDataset() *schema.Resource {
 				Optional:     true,
 				ForceNew:     true,
 				Default:      "US",
-				ValidateFunc: validation.StringInSlice([]string{"US", "EU", "asia-northeast1"}, false),
+				ValidateFunc: validation.StringInSlice([]string{"US", "EU", "asia-east1", "asia-northeast1", "asia-southeast1", "australia-southeast1", "europe-north1", "europe-west2", "us-east4"}, false),
+			},
+
+			// defaultPartitionExpirationMs: [Optional] The default partition
+			// expiration for all partitioned tables in the dataset, in
+			// milliseconds. Once this property is set, all newly-created
+			// partitioned tables in the dataset will have an expirationMs
+			// property in the timePartitioning settings set to this value, and
+			// changing the value will only affect new tables, not existing ones.
+			// The storage in a partition will have an expiration time of its
+			// partition time plus this value. Setting this property overrides the
+			// use of defaultTableExpirationMs for partitioned tables: only one of
+			// defaultTableExpirationMs and defaultPartitionExpirationMs will be used
+			// for any new partitioned table. If you provide an explicit
+			// timePartitioning.expirationMs when creating or updating a partitioned
+			// table, that value takes precedence over the default partition expiration
+			// time indicated by this property.
+			"default_partition_expiration_ms": {
+				Type:     schema.TypeInt,
+				Optional: true,
 			},
 
 			// DefaultTableExpirationMs: [Optional] The default lifetime of all
@@ -102,10 +121,77 @@ func resourceBigQueryDataset() *schema.Resource {
 			// Labels: [Experimental] The labels associated with this dataset. You
 			// can use these to organize and group your datasets. You can set this
 			// property when inserting or updating a dataset.
-			"labels": &schema.Schema{
+			"labels": {
 				Type:     schema.TypeMap,
 				Optional: true,
-				Elem:     schema.TypeString,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+			},
+
+			// Access: [Optional] An array of objects that define dataset access
+			// for one or more entities. You can set this property when inserting
+			// or updating a dataset in order to control who is allowed to access
+			// the data.
+			"access": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				// Computed because if unset, BQ adds 4 entries automatically
+				Computed: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"role": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							ValidateFunc: validation.StringInSlice([]string{"OWNER", "WRITER", "READER"}, false),
+						},
+						"domain": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"group_by_email": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"special_group": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"user_by_email": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
+						"view": {
+							Type:     schema.TypeList,
+							Optional: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"project_id": {
+										Type:     schema.TypeString,
+										Required: true,
+									},
+									"dataset_id": {
+										Type:     schema.TypeString,
+										Required: true,
+									},
+									"table_id": {
+										Type:     schema.TypeString,
+										Required: true,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+
+			// Delete Contents on Destroy: [Optional] If True, delete all the tables in the dataset.
+			// If False and the dataset contains tables, the request will fail.
+			// Default is False.
+			"delete_contents_on_destroy": {
+				Type:             schema.TypeBool,
+				Optional:         true,
+				Default:          false,
+				DiffSuppressFunc: emptyOrDefaultStringSuppress("false"),
 			},
 
 			// SelfLink: [Output-only] A URL that can be used to access the resource
@@ -166,6 +252,10 @@ func resourceDataset(d *schema.ResourceData, meta interface{}) (*bigquery.Datase
 		dataset.Location = v.(string)
 	}
 
+	if v, ok := d.GetOk("default_partition_expiration_ms"); ok {
+		dataset.DefaultPartitionExpirationMs = int64(v.(int))
+	}
+
 	if v, ok := d.GetOk("default_table_expiration_ms"); ok {
 		dataset.DefaultTableExpirationMs = int64(v.(int))
 	}
@@ -178,6 +268,49 @@ func resourceDataset(d *schema.ResourceData, meta interface{}) (*bigquery.Datase
 		}
 
 		dataset.Labels = labels
+	}
+
+	if v, ok := d.GetOk("access"); ok {
+		access := []*bigquery.DatasetAccess{}
+		vs := v.(*schema.Set)
+		for _, m := range vs.List() {
+			da := bigquery.DatasetAccess{}
+			accessMap := m.(map[string]interface{})
+			da.Role = accessMap["role"].(string)
+			if val, ok := accessMap["domain"]; ok {
+				da.Domain = val.(string)
+			}
+			if val, ok := accessMap["group_by_email"]; ok {
+				da.GroupByEmail = val.(string)
+			}
+			if val, ok := accessMap["special_group"]; ok {
+				da.SpecialGroup = val.(string)
+			}
+			if val, ok := accessMap["user_by_email"]; ok {
+				da.UserByEmail = val.(string)
+			}
+			if val, ok := accessMap["view"]; ok {
+				views := val.([]interface{})
+				if len(views) > 0 {
+					vm := views[0].(map[string]interface{})
+					if len(vm) > 0 {
+						view := bigquery.TableReference{}
+						if dsId, ok := vm["dataset_id"]; ok {
+							view.DatasetId = dsId.(string)
+						}
+						if pId, ok := vm["project_id"]; ok {
+							view.ProjectId = pId.(string)
+						}
+						if tId, ok := vm["table_id"]; ok {
+							view.TableId = tId.(string)
+						}
+						da.View = &view
+					}
+				}
+			}
+			access = append(access, &da)
+		}
+		dataset.Access = access
 	}
 
 	return dataset, nil
@@ -228,12 +361,16 @@ func resourceBigQueryDatasetRead(d *schema.ResourceData, meta interface{}) error
 	d.Set("project", id.Project)
 	d.Set("etag", res.Etag)
 	d.Set("labels", res.Labels)
+	if err := d.Set("access", flattenAccess(res.Access)); err != nil {
+		return err
+	}
 	d.Set("self_link", res.SelfLink)
 	d.Set("description", res.Description)
 	d.Set("friendly_name", res.FriendlyName)
 	d.Set("creation_time", res.CreationTime)
 	d.Set("last_modified_time", res.LastModifiedTime)
 	d.Set("dataset_id", res.DatasetReference.DatasetId)
+	d.Set("default_partition_expiration_ms", res.DefaultPartitionExpirationMs)
 	d.Set("default_table_expiration_ms", res.DefaultTableExpirationMs)
 
 	// Older Tables in BigQuery have no Location set in the API response. This may be an issue when importing
@@ -280,7 +417,8 @@ func resourceBigQueryDatasetDelete(d *schema.ResourceData, meta interface{}) err
 		return err
 	}
 
-	if err := config.clientBigQuery.Datasets.Delete(id.Project, id.DatasetId).Do(); err != nil {
+	deleteContents := d.Get("delete_contents_on_destroy").(bool)
+	if err := config.clientBigQuery.Datasets.Delete(id.Project, id.DatasetId).DeleteContents(deleteContents).Do(); err != nil {
 		return err
 	}
 
@@ -303,4 +441,28 @@ func parseBigQueryDatasetId(id string) (*bigQueryDatasetId, error) {
 	}
 
 	return nil, fmt.Errorf("Invalid BigQuery dataset specifier. Expecting {project}:{dataset-id}, got %s", id)
+}
+
+func flattenAccess(a []*bigquery.DatasetAccess) []map[string]interface{} {
+	access := make([]map[string]interface{}, 0, len(a))
+	for _, da := range a {
+		ai := map[string]interface{}{
+			"role":           da.Role,
+			"domain":         da.Domain,
+			"group_by_email": da.GroupByEmail,
+			"special_group":  da.SpecialGroup,
+			"user_by_email":  da.UserByEmail,
+		}
+		if da.View != nil {
+			view := []map[string]interface{}{{
+				"project_id": da.View.ProjectId,
+				"dataset_id": da.View.DatasetId,
+				"table_id":   da.View.TableId,
+			},
+			}
+			ai["view"] = view
+		}
+		access = append(access, ai)
+	}
+	return access
 }

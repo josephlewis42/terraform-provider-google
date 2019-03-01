@@ -6,28 +6,22 @@ import (
 
 	"github.com/hashicorp/terraform/helper/acctest"
 	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
 )
 
 func TestAccComputeRouter_basic(t *testing.T) {
 	t.Parallel()
 
+	testId := acctest.RandString(10)
 	resourceRegion := "europe-west1"
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeRouterDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: testAccComputeRouterBasic(resourceRegion),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeRouterExists(
-						"google_compute_router.foobar"),
-					resource.TestCheckResourceAttr(
-						"google_compute_router.foobar", "region", resourceRegion),
-				),
+			{
+				Config: testAccComputeRouterBasic(testId, resourceRegion),
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_compute_router.foobar",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -39,22 +33,17 @@ func TestAccComputeRouter_basic(t *testing.T) {
 func TestAccComputeRouter_noRegion(t *testing.T) {
 	t.Parallel()
 
+	testId := acctest.RandString(10)
 	providerRegion := "us-central1"
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeRouterDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: testAccComputeRouterNoRegion(providerRegion),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeRouterExists(
-						"google_compute_router.foobar"),
-					resource.TestCheckResourceAttr(
-						"google_compute_router.foobar", "region", providerRegion),
-				),
+			{
+				Config: testAccComputeRouterNoRegion(testId, providerRegion),
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_compute_router.foobar",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -63,80 +52,70 @@ func TestAccComputeRouter_noRegion(t *testing.T) {
 	})
 }
 
-func testAccCheckComputeRouterDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
+func TestAccComputeRouter_full(t *testing.T) {
+	t.Parallel()
 
-	routersService := config.clientCompute.Routers
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "google_compute_router" {
-			continue
-		}
-
-		project, err := getTestProject(rs.Primary, config)
-		if err != nil {
-			return err
-		}
-
-		region, err := getTestRegion(rs.Primary, config)
-		if err != nil {
-			return err
-		}
-
-		name := rs.Primary.Attributes["name"]
-
-		_, err = routersService.Get(project, region, name).Do()
-
-		if err == nil {
-			return fmt.Errorf("Error, Router %s in region %s still exists",
-				name, region)
-		}
-	}
-
-	return nil
-}
-
-func testAccCheckComputeRouterExists(n string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[n]
-		if !ok {
-			return fmt.Errorf("Not found: %s", n)
-		}
-
-		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
-		}
-
-		config := testAccProvider.Meta().(*Config)
-
-		project, err := getTestProject(rs.Primary, config)
-		if err != nil {
-			return err
-		}
-
-		region, err := getTestRegion(rs.Primary, config)
-		if err != nil {
-			return err
-		}
-
-		name := rs.Primary.Attributes["name"]
-
-		routersService := config.clientCompute.Routers
-		_, err = routersService.Get(project, region, name).Do()
-
-		if err != nil {
-			return fmt.Errorf("Error Reading Router %s: %s", name, err)
-		}
-
-		return nil
-	}
-}
-
-func testAccComputeRouterBasic(resourceRegion string) string {
 	testId := acctest.RandString(10)
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckComputeRouterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccComputeRouterFull(testId),
+			},
+			{
+				ResourceName:      "google_compute_router.foobar",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestAccComputeRouter_update(t *testing.T) {
+	t.Parallel()
+
+	testId := acctest.RandString(10)
+	region := getTestRegionFromEnv()
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckComputeRouterDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccComputeRouterBasic(testId, region),
+			},
+			{
+				ResourceName:      "google_compute_router.foobar",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccComputeRouterFull(testId),
+			},
+			{
+				ResourceName:      "google_compute_router.foobar",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccComputeRouterBasic(testId, region),
+			},
+			{
+				ResourceName:      "google_compute_router.foobar",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func testAccComputeRouterBasic(testId, resourceRegion string) string {
 	return fmt.Sprintf(`
 		resource "google_compute_network" "foobar" {
 			name = "router-test-%s"
+			auto_create_subnetworks = false
 		}
 		resource "google_compute_subnetwork" "foobar" {
 			name = "router-test-subnetwork-%s"
@@ -155,11 +134,11 @@ func testAccComputeRouterBasic(resourceRegion string) string {
 	`, testId, testId, resourceRegion, testId)
 }
 
-func testAccComputeRouterNoRegion(providerRegion string) string {
-	testId := acctest.RandString(10)
+func testAccComputeRouterNoRegion(testId, providerRegion string) string {
 	return fmt.Sprintf(`
 		resource "google_compute_network" "foobar" {
 			name = "router-test-%s"
+			auto_create_subnetworks = false
 		}
 		resource "google_compute_subnetwork" "foobar" {
 			name = "router-test-subnetwork-%s"
@@ -175,4 +154,29 @@ func testAccComputeRouterNoRegion(providerRegion string) string {
 			}
 		}
 	`, testId, testId, providerRegion, testId)
+}
+
+func testAccComputeRouterFull(testId string) string {
+	return fmt.Sprintf(`
+		resource "google_compute_network" "foobar" {
+			name = "router-test-%s"
+			auto_create_subnetworks = false
+		}
+
+		resource "google_compute_router" "foobar" {
+			name = "router-test-%s"
+			network = "${google_compute_network.foobar.name}"
+			bgp {
+				asn = 64514
+				advertise_mode = "CUSTOM"
+				advertised_groups = ["ALL_SUBNETS"]
+				advertised_ip_ranges {
+					range = "1.2.3.4"
+				}
+				advertised_ip_ranges {
+					range = "6.7.0.0/16"
+				}
+			}
+		}
+	`, testId, testId)
 }

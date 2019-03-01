@@ -9,34 +9,6 @@ import (
 	"github.com/hashicorp/terraform/terraform"
 )
 
-func TestAccComputeTargetTcpProxy_basic(t *testing.T) {
-	t.Parallel()
-
-	target := fmt.Sprintf("ttcp-test-%s", acctest.RandString(10))
-	backend := fmt.Sprintf("ttcp-test-%s", acctest.RandString(10))
-	hc := fmt.Sprintf("ttcp-test-%s", acctest.RandString(10))
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckComputeTargetTcpProxyDestroy,
-		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: testAccComputeTargetTcpProxy_basic1(target, backend, hc),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeTargetTcpProxyExists(
-						"google_compute_target_tcp_proxy.foobar"),
-				),
-			},
-			resource.TestStep{
-				ResourceName:      "google_compute_target_tcp_proxy.foobar",
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
-	})
-}
-
 func TestAccComputeTargetTcpProxy_update(t *testing.T) {
 	t.Parallel()
 
@@ -49,14 +21,14 @@ func TestAccComputeTargetTcpProxy_update(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeTargetTcpProxyDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccComputeTargetTcpProxy_basic1(target, backend, hc),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeTargetTcpProxyExists(
 						"google_compute_target_tcp_proxy.foobar"),
 				),
 			},
-			resource.TestStep{
+			{
 				Config: testAccComputeTargetTcpProxy_basic2(target, backend, hc),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeTargetTcpProxyExists(
@@ -65,24 +37,6 @@ func TestAccComputeTargetTcpProxy_update(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccCheckComputeTargetTcpProxyDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "google_compute_target_tcp_proxy" {
-			continue
-		}
-
-		_, err := config.clientCompute.TargetTcpProxies.Get(
-			config.Project, rs.Primary.ID).Do()
-		if err == nil {
-			return fmt.Errorf("TargetTcpProxy still exists")
-		}
-	}
-
-	return nil
 }
 
 func testAccCheckComputeTargetTcpProxyExists(n string) resource.TestCheckFunc {

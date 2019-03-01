@@ -49,7 +49,7 @@ resource "google_compute_instance_template" "webserver" {
   }
 
   disk {
-    source_image = "debian-cloud/debian-8"
+    source_image = "debian-cloud/debian-9"
     auto_delete  = true
     boot         = true
   }
@@ -84,7 +84,7 @@ The following arguments are supported:
 * `connection_draining_timeout_sec` - (Optional) Time for which instance will be drained (not accept new connections,
 but still work to finish started ones). Defaults to `300`.
 
-* `custom_request_headers` - (Optional, [Beta](/docs/providers/google/index.html#beta-features)) Headers that the
+* `custom_request_headers` - (Optional, [Beta](https://terraform.io/docs/providers/google/provider_versions.html)) Headers that the
     HTTP/S load balancer should add to proxied requests. See [guide](https://cloud.google.com/compute/docs/load-balancing/http/backend-service#user-defined-request-headers) for details.
 
 * `description` - (Optional) The textual description for the backend service.
@@ -100,12 +100,16 @@ but still work to finish started ones). Defaults to `300`.
 * `protocol` - (Optional) The protocol for incoming requests. Defaults to
     `HTTP`.
 
-* `security_policy` - (Optional, [Beta](/docs/providers/google/index.html#beta-features)) Name or URI of a
+* `security_policy` - (Optional) Name or URI of a
     [security policy](https://cloud.google.com/armor/docs/security-policy-concepts) to add to the backend service.
 
 * `session_affinity` - (Optional) How to distribute load. Options are `NONE` (no
     affinity), `CLIENT_IP` (hash of the source/dest addresses / ports), and
     `GENERATED_COOKIE` (distribute load using a generated session cookie).
+
+* `affinity_cookie_ttl_sec` - (Optional) Lifetime of cookies in seconds if session_affinity is
+    `GENERATED_COOKIE`. If set to 0, the cookie is non-persistent and lasts only until the end of
+    the browser session (or equivalent). The maximum allowed value for TTL is one day.
 
 * `timeout_sec` - (Optional) The number of secs to wait for a backend to respond
     to a request before considering the request failed. Defaults to `30`.
@@ -175,11 +179,15 @@ The `iap` block supports:
 * `oauth2_client_id` - (Required) The client ID for use with OAuth 2.0.
 
 * `oauth2_client_secret` - (Required) The client secret for use with OAuth 2.0.
+Out of band changes to this field will not be detected by Terraform, and it may
+perform spurious no-op updates when imported, or upgraded from pre-`2.0.0`.
 
 ## Attributes Reference
 
 In addition to the arguments listed above, the following computed attributes are
 exported:
+
+* `iap.0.oauth2_client_secret_sha256` - The SHA256 hash of the OAuth 2.0 client secret value.
 
 * `fingerprint` - The fingerprint of the backend service.
 

@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform/helper/acctest"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
+	"google.golang.org/api/bigquery/v2"
 )
 
 func TestAccBigQueryDataset_basic(t *testing.T) {
@@ -21,18 +22,168 @@ func TestAccBigQueryDataset_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBigQueryDataset(datasetID),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBigQueryDatasetExists(
-						"google_bigquery_dataset.test"),
-				),
 			},
-
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
 			{
 				Config: testAccBigQueryDatasetUpdated(datasetID),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckBigQueryDatasetExists(
-						"google_bigquery_dataset.test"),
-				),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestAccBigQueryDataset_datasetWithContents(t *testing.T) {
+	t.Parallel()
+
+	datasetID := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	tableID := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckBigQueryDatasetDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBigQueryDatasetDeleteContents(datasetID),
+				Check:  testAccAddTable(datasetID, tableID),
+			},
+			{
+				ResourceName:            "google_bigquery_dataset.contents_test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"delete_contents_on_destroy"},
+			},
+		},
+	})
+}
+
+func TestAccBigQueryDataset_access(t *testing.T) {
+	t.Parallel()
+
+	datasetID := fmt.Sprintf("tf_test_access_%s", acctest.RandString(10))
+	otherDatasetID := fmt.Sprintf("tf_test_other_%s", acctest.RandString(10))
+	otherTableID := fmt.Sprintf("tf_test_other_%s", acctest.RandString(10))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckBigQueryDatasetDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBigQueryDatasetWithOneAccess(datasetID),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.access_test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryDatasetWithTwoAccess(datasetID),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.access_test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryDatasetWithOneAccess(datasetID),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.access_test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryDatasetWithViewAccess(datasetID, otherDatasetID, otherTableID),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.access_test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestAccBigQueryDataset_regionalLocation(t *testing.T) {
+	t.Parallel()
+
+	datasetID1 := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	datasetID2 := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	datasetID3 := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	datasetID4 := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	datasetID5 := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	datasetID6 := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+	datasetID7 := fmt.Sprintf("tf_test_%s", acctest.RandString(10))
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckBigQueryDatasetDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccBigQueryRegionalDataset(datasetID1, "asia-east1"),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryRegionalDataset(datasetID2, "asia-northeast1"),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryRegionalDataset(datasetID3, "asia-southeast1"),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryRegionalDataset(datasetID4, "australia-southeast1"),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryRegionalDataset(datasetID5, "europe-north1"),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryRegionalDataset(datasetID6, "europe-west2"),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: testAccBigQueryRegionalDataset(datasetID7, "us-east4"),
+			},
+			{
+				ResourceName:      "google_bigquery_dataset.test",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 		},
 	})
@@ -55,28 +206,21 @@ func testAccCheckBigQueryDatasetDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckBigQueryDatasetExists(n string) resource.TestCheckFunc {
+func testAccAddTable(datasetID string, tableID string) resource.TestCheckFunc {
+	// Not actually a check, but adds a table independently of terraform
 	return func(s *terraform.State) error {
-		rs, ok := s.RootModule().Resources[n]
-		if !ok {
-			return fmt.Errorf("Not found: %s", n)
-		}
-
-		if rs.Primary.ID == "" {
-			return fmt.Errorf("No ID is set")
-		}
-
 		config := testAccProvider.Meta().(*Config)
-
-		found, err := config.clientBigQuery.Datasets.Get(config.Project, rs.Primary.Attributes["dataset_id"]).Do()
+		table := &bigquery.Table{
+			TableReference: &bigquery.TableReference{
+				DatasetId: datasetID,
+				TableId:   tableID,
+				ProjectId: config.Project,
+			},
+		}
+		_, err := config.clientBigQuery.Tables.Insert(config.Project, datasetID, table).Do()
 		if err != nil {
-			return err
+			return fmt.Errorf("Could not create table")
 		}
-
-		if found.Id != rs.Primary.ID {
-			return fmt.Errorf("Dataset not found")
-		}
-
 		return nil
 	}
 }
@@ -88,9 +232,10 @@ resource "google_bigquery_dataset" "test" {
   friendly_name               = "foo"
   description                 = "This is a foo description"
   location                    = "EU"
+  default_partition_expiration_ms = 3600000
   default_table_expiration_ms = 3600000
 
-  labels {
+  labels = {
     env                         = "foo"
     default_table_expiration_ms = 3600000
   }
@@ -104,11 +249,128 @@ resource "google_bigquery_dataset" "test" {
   friendly_name               = "bar"
   description                 = "This is a bar description"
   location                    = "EU"
+  default_partition_expiration_ms = 7200000
   default_table_expiration_ms = 7200000
 
-  labels {
+  labels = {
     env                         = "bar"
     default_table_expiration_ms = 7200000
   }
 }`, datasetID)
+}
+
+func testAccBigQueryDatasetDeleteContents(datasetID string) string {
+	return fmt.Sprintf(`
+resource "google_bigquery_dataset" "contents_test" {
+  dataset_id                  = "%s"
+  friendly_name               = "foo"
+  description                 = "This is a foo description"
+  location                    = "EU"
+  default_partition_expiration_ms = 3600000
+  default_table_expiration_ms = 3600000
+  delete_contents_on_destroy = true
+
+  labels = {
+    env                         = "foo"
+    default_table_expiration_ms = 3600000
+  }
+}`, datasetID)
+}
+
+func testAccBigQueryRegionalDataset(datasetID string, location string) string {
+	return fmt.Sprintf(`
+resource "google_bigquery_dataset" "test" {
+  dataset_id                  = "%s"
+  friendly_name               = "foo"
+  description                 = "This is a foo description"
+  location                    = "%s"
+  default_table_expiration_ms = 3600000
+
+  labels = {
+    env                         = "foo"
+    default_table_expiration_ms = 3600000
+  }
+}`, datasetID, location)
+}
+
+func testAccBigQueryDatasetWithOneAccess(datasetID string) string {
+	return fmt.Sprintf(`
+resource "google_bigquery_dataset" "access_test" {
+  dataset_id = "%s"
+
+  access {
+    role          = "OWNER"
+    user_by_email = "Joe@example.com"
+  }
+
+  labels = {
+    env                         = "foo"
+    default_table_expiration_ms = 3600000
+  }
+}`, datasetID)
+}
+
+func testAccBigQueryDatasetWithTwoAccess(datasetID string) string {
+	return fmt.Sprintf(`
+resource "google_bigquery_dataset" "access_test" {
+  dataset_id = "%s"
+
+  access {
+    role          = "OWNER"
+    user_by_email = "Joe@example.com"
+  }
+  access {
+    role   = "READER"
+    domain = "example.com"
+  }
+
+  labels = {
+    env                         = "foo"
+    default_table_expiration_ms = 3600000
+  }
+}`, datasetID)
+}
+
+func testAccBigQueryDatasetWithViewAccess(datasetID, otherDatasetID, otherTableID string) string {
+	// Note that we have to add a non-view access to prevent BQ from creating 4 default
+	// access entries.
+	return fmt.Sprintf(`
+resource "google_bigquery_dataset" "other_dataset" {
+  dataset_id = "%s"
+}
+
+resource "google_bigquery_table" "table_with_view" {
+  table_id   = "%s"
+  dataset_id = "${google_bigquery_dataset.other_dataset.dataset_id}"
+
+  time_partitioning {
+    type = "DAY"
+  }
+
+  view {
+    query = "SELECT state FROM [lookerdata:cdc.project_tycho_reports]"
+    use_legacy_sql = true
+  }
+}
+
+resource "google_bigquery_dataset" "access_test" {
+  dataset_id = "%s"
+
+  access {
+    role          = "OWNER"
+    user_by_email = "Joe@example.com"
+  }
+  access {
+    view {
+      project_id = "${google_bigquery_dataset.other_dataset.project}"
+      dataset_id = "${google_bigquery_dataset.other_dataset.dataset_id}"
+      table_id   = "${google_bigquery_table.table_with_view.table_id}"
+    }
+  }
+
+  labels = {
+    env                         = "foo"
+    default_table_expiration_ms = 3600000
+  }
+}`, otherDatasetID, otherTableID, datasetID)
 }

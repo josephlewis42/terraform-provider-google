@@ -9,8 +9,8 @@ description: |-
 # google\_kms\_key\_ring
 
 Allows creation of a Google Cloud Platform KMS KeyRing. For more information see
-[the official documentation](https://cloud.google.com/kms/docs/object-hierarchy#keyring)
-and 
+[the official documentation](https://cloud.google.com/kms/docs/object-hierarchy#key_ring)
+and
 [API](https://cloud.google.com/kms/docs/reference/rest/v1/projects.locations.keyRings).
 
 A KeyRing is a grouping of CryptoKeys for organizational purposes. A KeyRing belongs to a Google Cloud Platform Project
@@ -48,7 +48,7 @@ The following arguments are supported:
 In addition to the arguments listed above, the following computed attributes are
 exported:
 
-* `id` - The ID of the created KeyRing. Its format is `{projectId}/{location}/{keyRingName}`.
+* `self_link` - The self link of the created KeyRing. Its format is `projects/{projectId}/locations/{location}/keyRings/{keyRingName}`.
 
 ## Import
 

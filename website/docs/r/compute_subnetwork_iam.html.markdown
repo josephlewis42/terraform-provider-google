@@ -8,6 +8,9 @@ description: |-
 
 # IAM policy for GCE subnetwork
 
+~> **Warning:** These resources are in beta, and should be used with the terraform-provider-google-beta provider.
+See [Provider Versions](https://terraform.io/docs/providers/google/provider_versions.html) for more details on beta resources.
+
 Three different resources help you manage your IAM policy for GCE subnetwork. Each of these resources serves a different use case:
 
 * `google_compute_subnetwork_iam_policy`: Authoritative. Sets the IAM policy for the subnetwork and replaces any existing policy already attached.
@@ -17,8 +20,6 @@ Three different resources help you manage your IAM policy for GCE subnetwork. Ea
 ~> **Note:** `google_compute_subnetwork_iam_policy` **cannot** be used in conjunction with `google_compute_subnetwork_iam_binding` and `google_compute_subnetwork_iam_member` or they will fight over what your policy should be.
 
 ~> **Note:** `google_compute_subnetwork_iam_binding` resources **can be** used in conjunction with `google_compute_subnetwork_iam_member` resources **only if** they do not grant privilege to the same role.
-
-~> **Note:** These entire resources are in [Beta](/docs/providers/google/index.html#beta-features)
 
 ## google\_compute\_subnetwork\_iam\_policy
 
@@ -75,7 +76,7 @@ The following arguments are supported:
   * **user:{emailid}**: An email address that represents a specific Google account. For example, alice@gmail.com or joe@example.com.
   * **serviceAccount:{emailid}**: An email address that represents a service account. For example, my-other-app@appspot.gserviceaccount.com.
   * **group:{emailid}**: An email address that represents a Google group. For example, admins@example.com.
-  * **domain:{domain}**: A Google Apps domain name that represents all the users of that domain. For example, google.com or example.com.
+  * **domain:{domain}**: A G Suite domain (primary, instead of alias) name that represents all the users of that domain. For example, google.com or example.com.
 
 * `role` - (Required) The role that should be applied. Only one
     `google_compute_subnetwork_iam_binding` can be used per role. Note that custom roles must be of the format
@@ -106,10 +107,10 @@ For all import syntaxes, the "resource in question" can take any of the followin
 * {{region}}/{{name}} (project is taken from provider project)
 * {{name}} (project and region are taken from provider project)
 
-IAM member imports use space-delimited identifiers; the resource in question, the role, and the account, e.g.
+IAM member imports use space-delimited identifiers; the resource in question, the role, and the member identity, e.g.
 
 ```
-$ terraform import google_compute_subnetwork_iam_member.subnet "project-name/region-name/subnetwork-name roles/compute.networkUser foo@example.com"
+$ terraform import google_compute_subnetwork_iam_member.subnet "project-name/region-name/subnetwork-name roles/compute.networkUser user:foo@example.com"
 ```
 
 IAM binding imports use space-delimited identifiers; the resource in question and the role, e.g.

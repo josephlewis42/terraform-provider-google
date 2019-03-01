@@ -23,47 +23,58 @@ description: |-
 
 A Google Cloud Redis instance.
 
+
 To get more information about Instance, see:
 
 * [API documentation](https://cloud.google.com/memorystore/docs/redis/reference/rest/)
 * How-to Guides
     * [Official Documentation](https://cloud.google.com/memorystore/docs/redis/)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=redis_instance_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Redis Instance Basic
 
-### Basic Usage
+
 ```hcl
-resource "google_redis_instance" "test" {
-  name           = "%s"
+resource "google_redis_instance" "cache" {
+  name           = "memory-cache"
   memory_size_gb = 1
 }
 ```
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=redis_instance_full&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Redis Instance Full
 
-### Full Usage
+
 ```hcl
-resource "google_compute_network" "test" {
-  name = "%s"
-}
-
-resource "google_redis_instance" "test" {
-  name           = "%s"
+resource "google_redis_instance" "cache" {
+  name           = "ha-memory-cache"
   tier           = "STANDARD_HA"
   memory_size_gb = 1
 
-  region                  = "us-central1"
   location_id             = "us-central1-a"
   alternative_location_id = "us-central1-f"
-  
-  authorized_network = "${google_compute_network.test.self_link}"
+
+  authorized_network = "${google_compute_network.auto-network.self_link}"
 
   redis_version     = "REDIS_3_2"
   display_name      = "Terraform Test Instance"
   reserved_ip_range = "192.168.0.0/29"
 
-  labels {
+  labels = {
     my_key    = "my_val"
     other_key = "other_val"
   }
+}
+
+resource "google_compute_network" "auto-network" {
+  name = "authorized-network"
 }
 ```
 
@@ -71,9 +82,11 @@ resource "google_redis_instance" "test" {
 
 The following arguments are supported:
 
+
 * `name` -
   (Required)
   The ID of the instance or a fully qualified identifier for the instance.
+
 * `memory_size_gb` -
   (Required)
   Redis memory size in GiB.
@@ -81,26 +94,34 @@ The following arguments are supported:
 
 - - -
 
+
 * `alternative_location_id` -
   (Optional)
   Only applicable to STANDARD_HA tier which protects the instance
   against zonal failures by provisioning it across two zones.
   If provided, it must be a different zone from the one provided in
   [locationId].
+
 * `authorized_network` -
   (Optional)
   The full name of the Google Compute Engine network to which the
   instance is connected. If left unspecified, the default network
   will be used.
+
 * `display_name` -
   (Optional)
   An arbitrary and optional user-provided name for the instance.
+
 * `labels` -
   (Optional)
   Resource labels to represent user provided metadata.
+
 * `redis_configs` -
   (Optional)
   Redis configuration parameters, according to http://redis.io/topics/config.
+  Please check Memorystore documentation for the list of supported parameters:
+  https://cloud.google.com/memorystore/docs/redis/reference/rest/v1/projects.locations.instances#Instance.FIELDS.redis_configs
+
 * `location_id` -
   (Optional)
   The zone where the instance will be provisioned. If not provided,
@@ -108,12 +129,14 @@ The following arguments are supported:
   instances will be created across two zones for protection against
   zonal failures. If [alternativeLocationId] is also provided, it must
   be different from [locationId].
+
 * `redis_version` -
   (Optional)
   The version of Redis software. If not provided, latest supported
   version will be used. Updating the version will perform an
   upgrade/downgrade to the new version. Currently, the supported values
   are REDIS_3_2 for Redis 3.2.
+
 * `reserved_ip_range` -
   (Optional)
   The CIDR range of internal addresses that are reserved for this
@@ -121,16 +144,17 @@ The following arguments are supported:
   block, for example, 10.0.0.0/29 or 192.168.0.0/29. Ranges must be
   unique and non-overlapping with existing subnets in an authorized
   network.
+
 * `tier` -
   (Optional)
   The service tier of the instance. Must be one of these values:
-
   - BASIC: standalone instance
   - STANDARD_HA: highly available primary/replica instances
+
 * `region` -
   (Optional)
   The name of the Redis region of the instance.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
 
@@ -138,18 +162,22 @@ The following arguments are supported:
 
 In addition to the arguments listed above, the following computed attributes are exported:
 
+
 * `create_time` -
   The time the instance was created in RFC3339 UTC "Zulu" format,
   accurate to nanoseconds.
+
 * `current_location_id` -
   The current zone where the Redis endpoint is placed.
   For Basic Tier instances, this will always be the same as the
   [locationId] provided by the user at creation time. For Standard Tier
   instances, this can be either [locationId] or [alternativeLocationId]
   and can change after a failover event.
+
 * `host` -
   Hostname or IP address of the exposed Redis endpoint used by clients
   to connect to the service.
+
 * `port` -
   The port number of the exposed Redis endpoint.
 
@@ -160,8 +188,8 @@ This resource provides the following
 [Timeouts](/docs/configuration/resources.html#timeouts) configuration options:
 
 - `create` - Default is 6 minutes.
-- `update` - Default is 4 minutes.
-- `delete` - Default is 4 minutes.
+- `update` - Default is 6 minutes.
+- `delete` - Default is 6 minutes.
 
 ## Import
 
@@ -172,3 +200,6 @@ $ terraform import google_redis_instance.default projects/{{project}}/locations/
 $ terraform import google_redis_instance.default {{project}}/{{region}}/{{name}}
 $ terraform import google_redis_instance.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

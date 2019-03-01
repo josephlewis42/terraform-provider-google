@@ -38,6 +38,7 @@ storage space requirements.
 Add a persistent disk to your instance when you need reliable and
 affordable storage with consistent performance characteristics.
 
+
 To get more information about Disk, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/latest/disks)
@@ -48,7 +49,13 @@ To get more information about Disk, see:
 state as plain-text.
 [Read more about sensitive data in state](/docs/state/sensitive-data.html).
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=disk_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Disk Basic
+
 
 ```hcl
 resource "google_compute_disk" "default" {
@@ -56,7 +63,7 @@ resource "google_compute_disk" "default" {
   type  = "pd-ssd"
   zone  = "us-central1-a"
   image = "debian-8-jessie-v20170523"
-  labels {
+  labels = {
     environment = "dev"
   }
 }
@@ -65,6 +72,7 @@ resource "google_compute_disk" "default" {
 ## Argument Reference
 
 The following arguments are supported:
+
 
 * `name` -
   (Required)
@@ -79,23 +87,31 @@ The following arguments are supported:
 
 - - -
 
+
 * `description` -
   (Optional)
   An optional description of this resource. Provide this property when
   you create the resource.
+
 * `labels` -
   (Optional)
   Labels to apply to this disk.  A list of key->value pairs.
+
 * `size` -
   (Optional)
   Size of the persistent disk, specified in GB. You can specify this
   field when creating a persistent disk using the sourceImage or
   sourceSnapshot parameter, or specify it alone to create an empty
   persistent disk.
-
   If you specify this field along with sourceImage or sourceSnapshot,
   the value of sizeGb must not be less than the size of the sourceImage
   or the size of the snapshot.
+
+* `type` -
+  (Optional)
+  URL of the disk type resource describing which disk type to use to
+  create the disk. Provide this when creating the disk.
+
 * `image` -
   (Optional)
   The image from which to initialize this disk. This can be
@@ -107,104 +123,130 @@ The following arguments are supported:
   [google_compute_image data source](/docs/providers/google/d/datasource_compute_image.html).
   For instance, the image `centos-6-v20180104` includes its family name `centos-6`.
   These images can be referred by family name here.
-* `type` -
-  (Optional)
-  URL of the disk type resource describing which disk type to use to
-  create the disk. Provide this when creating the disk.
+
 * `zone` -
   (Optional)
   A reference to the zone where the disk resides.
-* `disk_encryption_key` -
-  (Optional)
-  Encrypts the disk using a customer-supplied encryption key.
 
-  After you encrypt a disk with a customer-supplied key, you must
-  provide the same key if you use the disk later (e.g. to create a disk
-  snapshot or an image, or to attach the disk to a virtual machine).
-
-  Customer-supplied encryption keys do not protect access to metadata of
-  the disk.
-
-  If you do not provide an encryption key when creating the disk, then
-  the disk will be encrypted using an automatically generated key and
-  you do not need to provide a key to use the disk later.  Structure is documented below.
 * `source_image_encryption_key` -
   (Optional)
   The customer-supplied encryption key of the source image. Required if
   the source image is protected by a customer-supplied encryption key.  Structure is documented below.
+
+* `disk_encryption_key` -
+  (Optional)
+  Encrypts the disk using a customer-supplied encryption key.
+  After you encrypt a disk with a customer-supplied key, you must
+  provide the same key if you use the disk later (e.g. to create a disk
+  snapshot or an image, or to attach the disk to a virtual machine).
+  Customer-supplied encryption keys do not protect access to metadata of
+  the disk.
+  If you do not provide an encryption key when creating the disk, then
+  the disk will be encrypted using an automatically generated key and
+  you do not need to provide a key to use the disk later.  Structure is documented below.
+
 * `snapshot` -
   (Optional)
   The source snapshot used to create this disk. You can provide this as
   a partial or full URL to the resource. For example, the following are
   valid values:
+  * `https://www.googleapis.com/compute/v1/projects/project/global/snapshots/snapshot`
+  * `projects/project/global/snapshots/snapshot`
+  * `global/snapshots/snapshot`
+  * `snapshot`
 
-  * https://www.googleapis.com/compute/v1/projects/project/global/
-        snapshots/snapshot
-  * projects/project/global/snapshots/snapshot
-  * global/snapshots/snapshot
-  * snapshot
 * `source_snapshot_encryption_key` -
   (Optional)
   The customer-supplied encryption key of the source snapshot. Required
   if the source snapshot is protected by a customer-supplied encryption
   key.  Structure is documented below.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
-The `disk_encryption_key` block supports:
-* `raw_key` -
-  (Optional)
-  Specifies a 256-bit customer-supplied encryption key, encoded in
-  RFC 4648 base64 to either encrypt or decrypt this resource.
-* `sha256` -
-  The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
-  encryption key that protects this resource.
-    
-The `source_image_encryption_key` block supports:
-* `raw_key` -
-  (Optional)
-  Specifies a 256-bit customer-supplied encryption key, encoded in
-  RFC 4648 base64 to either encrypt or decrypt this resource.
-* `sha256` -
-  The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
-  encryption key that protects this resource.
-    
-The `source_snapshot_encryption_key` block supports:
-* `raw_key` -
-  (Optional)
-  Specifies a 256-bit customer-supplied encryption key, encoded in
-  RFC 4648 base64 to either encrypt or decrypt this resource.
-* `sha256` -
-  The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
-  encryption key that protects this resource.
-    
 
-* (Deprecated) `disk_encryption_key_raw`:  This is an alias for
-  `disk_encryption_key.raw_key`.  It is deprecated to enhance
-  consistency with `source_image_encryption_key` and
-  `source_snapshot_encryption_key`.
+The `source_image_encryption_key` block supports:
+
+* `raw_key` -
+  (Optional)
+  Specifies a 256-bit customer-supplied encryption key, encoded in
+  RFC 4648 base64 to either encrypt or decrypt this resource.
+
+* `sha256` -
+  The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
+  encryption key that protects this resource.
+
+* `kms_key_self_link` -
+  (Optional)
+  The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
+  in the cloud console. In order to use this additional
+  IAM permissions need to be set on the Compute Engine Service Agent. See
+  https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
+
+The `disk_encryption_key` block supports:
+
+* `raw_key` -
+  (Optional)
+  Specifies a 256-bit customer-supplied encryption key, encoded in
+  RFC 4648 base64 to either encrypt or decrypt this resource.
+
+* `sha256` -
+  The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
+  encryption key that protects this resource.
+
+* `kms_key_self_link` -
+  (Optional)
+  The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
+  in the cloud console. In order to use this additional
+  IAM permissions need to be set on the Compute Engine Service Agent. See
+  https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
+
+The `source_snapshot_encryption_key` block supports:
+
+* `raw_key` -
+  (Optional)
+  Specifies a 256-bit customer-supplied encryption key, encoded in
+  RFC 4648 base64 to either encrypt or decrypt this resource.
+
+* `kms_key_self_link` -
+  (Optional)
+  The self link of the encryption key used to encrypt the disk. Also called KmsKeyName
+  in the cloud console. In order to use this additional
+  IAM permissions need to be set on the Compute Engine Service Agent. See
+  https://cloud.google.com/compute/docs/disks/customer-managed-encryption#encrypt_a_new_persistent_disk_with_your_own_keys
+
+* `sha256` -
+  The RFC 4648 base64 encoded SHA-256 hash of the customer-supplied
+  encryption key that protects this resource.
+
 ## Attributes Reference
 
 In addition to the arguments listed above, the following computed attributes are exported:
 
+
 * `label_fingerprint` -
   The fingerprint used for optimistic locking of this resource.  Used
   internally during updates.
+
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
+
 * `last_attach_timestamp` -
   Last attach timestamp in RFC3339 text format.
+
 * `last_detach_timestamp` -
   Last dettach timestamp in RFC3339 text format.
+
 * `users` -
   Links to the users of the disk (attached instances) in form:
   project/zones/zone/instances/instance
+
 * `source_image_id` -
   The ID value of the image used to create this disk. This value
   identifies the exact image that was used to create this persistent
   disk. For example, if you created the persistent disk from an image
   that was later deleted and recreated under the same name, the source
   image ID would identify the exact version of the image that was used.
+
 * `source_snapshot_id` -
   The unique ID of the snapshot used to create this disk. This value
   identifies the exact snapshot that was used to create this persistent
@@ -215,10 +257,6 @@ In addition to the arguments listed above, the following computed attributes are
 * `self_link` - The URI of the created resource.
 
 
-* (Deprecated) `disk_encryption_key_sha256`: This is an alias for
-  `disk_encryption_key.sha256`.  It is deprecated to enhance
-  consistency with `source_image_encryption_key` and
-  `source_snapshot_encryption_key`.
 ## Timeouts
 
 This resource provides the following
@@ -237,3 +275,6 @@ $ terraform import google_compute_disk.default projects/{{project}}/zones/{{zone
 $ terraform import google_compute_disk.default {{project}}/{{zone}}/{{name}}
 $ terraform import google_compute_disk.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

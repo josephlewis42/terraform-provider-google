@@ -9,10 +9,12 @@ import (
 
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
+	"github.com/terraform-providers/terraform-provider-random/random"
 )
 
 var testAccProviders map[string]terraform.ResourceProvider
 var testAccProvider *schema.Provider
+var testAccRandomProvider *schema.Provider
 
 var credsEnvVars = []string{
 	"GOOGLE_CREDENTIALS",
@@ -33,6 +35,12 @@ var regionEnvVars = []string{
 	"CLOUDSDK_COMPUTE_REGION",
 }
 
+var zoneEnvVars = []string{
+	"GOOGLE_ZONE",
+	"GCLOUD_ZONE",
+	"CLOUDSDK_COMPUTE_ZONE",
+}
+
 var orgEnvVars = []string{
 	"GOOGLE_ORG",
 }
@@ -51,8 +59,10 @@ var billingAccountEnvVars = []string{
 
 func init() {
 	testAccProvider = Provider().(*schema.Provider)
+	testAccRandomProvider = random.Provider().(*schema.Provider)
 	testAccProviders = map[string]terraform.ResourceProvider{
 		"google": testAccProvider,
+		"random": testAccRandomProvider,
 	}
 }
 
@@ -64,6 +74,13 @@ func TestProvider(t *testing.T) {
 
 func TestProvider_impl(t *testing.T) {
 	var _ terraform.ResourceProvider = Provider()
+}
+
+func TestProvider_noDuplicatesInResourceMap(t *testing.T) {
+	_, err := ResourceMapWithErrors()
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func testAccPreCheck(t *testing.T) {
@@ -85,6 +102,10 @@ func testAccPreCheck(t *testing.T) {
 
 	if v := multiEnvSearch(regionEnvVars); v != "us-central1" {
 		t.Fatalf("One of %s must be set to us-central1 for acceptance tests", strings.Join(regionEnvVars, ", "))
+	}
+
+	if v := multiEnvSearch(zoneEnvVars); v != "us-central1-a" {
+		t.Fatalf("One of %s must be set to us-central1-a for acceptance tests", strings.Join(zoneEnvVars, ", "))
 	}
 }
 
@@ -155,6 +176,10 @@ func getTestCredsFromEnv() string {
 // testAccPreCheck ensures at least one of the region env variables is set.
 func getTestRegionFromEnv() string {
 	return multiEnvSearch(regionEnvVars)
+}
+
+func getTestZoneFromEnv() string {
+	return multiEnvSearch(zoneEnvVars)
 }
 
 func getTestOrgFromEnv(t *testing.T) string {

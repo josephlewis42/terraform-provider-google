@@ -2,10 +2,14 @@ package google
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"strings"
 	"testing"
 
 	"regexp"
 
+	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/terraform/helper/acctest"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
@@ -318,7 +322,32 @@ func testAccCheckDataprocJobCompletesSuccessfully(n string, job *dataproc.Job) r
 		if err != nil {
 			return err
 		}
-		if completeJob.Status.State != "DONE" {
+		if completeJob.Status.State == "ERROR" {
+			if !strings.HasPrefix(completeJob.DriverOutputResourceUri, "gs://") {
+				return fmt.Errorf("Job completed in ERROR state but no valid log URI found")
+			}
+			u := strings.SplitN(strings.TrimPrefix(completeJob.DriverOutputResourceUri, "gs://"), "/", 2)
+			if len(u) != 2 {
+				return fmt.Errorf("Job completed in ERROR state but no valid log URI found")
+			}
+			l, err := config.clientStorage.Objects.List(u[0]).Prefix(u[1]).Do()
+			if err != nil {
+				return errwrap.Wrapf("Job completed in ERROR state, found error when trying to list logs: {{err}}", err)
+			}
+			for _, item := range l.Items {
+				resp, err := config.clientStorage.Objects.Get(item.Bucket, item.Name).Download()
+				if err != nil {
+					return errwrap.Wrapf("Job completed in ERROR state, found error when trying to read logs: {{err}}", err)
+				}
+				defer resp.Body.Close()
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					return errwrap.Wrapf("Job completed in ERROR state, found error when trying to read logs: {{err}}", err)
+				}
+				log.Printf("[ERROR] Job failed, driver logs:\n%s", body)
+			}
+			return fmt.Errorf("Job completed in ERROR state, check logs for details")
+		} else if completeJob.Status.State != "DONE" {
 			return fmt.Errorf("Job did not complete successfully, instead status: %s", completeJob.Status.State)
 		}
 
@@ -468,7 +497,7 @@ resource "google_dataproc_cluster" "basic" {
 			num_instances     = 1
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 	}
@@ -520,7 +549,7 @@ resource "google_dataproc_job" "pyspark" {
 			"spark.logConf" = "true"
 		}
 		logging_config {
-			driver_log_levels {
+			driver_log_levels = {
 				"root" = "INFO"
 			}
 		}
@@ -530,7 +559,7 @@ resource "google_dataproc_job" "pyspark" {
 		max_failures_per_hour = 1
 	}
 
-	labels {
+	labels = {
 		one = "1"
 	}
 }
@@ -579,12 +608,12 @@ func testAccDataprocJob_hadoop(rnd string) string {
 			args              = [
 			  "wordcount",
 			  "file:///usr/lib/spark/NOTICE",
-			  "gs://${google_dataproc_cluster.basic.cluster_config.0.bucket}/hadoopjob_output"
+			  "gs://${google_dataproc_cluster.basic.cluster_config.0.bucket}/hadoopjob_output_%s"
 			]
 		}
 
 	}
-	`, rnd)
+	`, rnd, rnd)
 
 }
 

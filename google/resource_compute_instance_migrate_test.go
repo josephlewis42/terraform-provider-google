@@ -25,12 +25,14 @@ func TestComputeInstanceMigrateState(t *testing.T) {
 		"v0.4.2 and earlier": {
 			StateVersion: 0,
 			Attributes: map[string]string{
+				"disk.#":               "0",
 				"metadata.#":           "2",
 				"metadata.0.foo":       "bar",
 				"metadata.1.baz":       "qux",
 				"metadata.2.with.dots": "should.work",
 			},
 			Expected: map[string]string{
+				"create_timeout":     "4",
 				"metadata.foo":       "bar",
 				"metadata.baz":       "qux",
 				"metadata.with.dots": "should.work",
@@ -77,8 +79,37 @@ func TestComputeInstanceMigrateState(t *testing.T) {
 	}
 
 	config := getInitializedConfig(t)
+
+	instanceName := fmt.Sprintf("instance-test-%s", acctest.RandString(10))
+	instance := &compute.Instance{
+		Name: instanceName,
+		Disks: []*compute.AttachedDisk{
+			{
+				Boot: true,
+				InitializeParams: &compute.AttachedDiskInitializeParams{
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
+				},
+			},
+		},
+		MachineType: "zones/" + config.Zone + "/machineTypes/n1-standard-1",
+		NetworkInterfaces: []*compute.NetworkInterface{
+			{
+				Network: "global/networks/default",
+			},
+		},
+	}
+	op, err := config.clientCompute.Instances.Insert(config.Project, config.Zone, instance).Do()
+	if err != nil {
+		t.Fatalf("Error creating instance: %s", err)
+	}
+	waitErr := computeSharedOperationWait(config.clientCompute, op, config.Project, "instance to create")
+	if waitErr != nil {
+		t.Fatal(waitErr)
+	}
+	defer cleanUpInstance(config, instanceName, config.Zone)
+
 	for tn, tc := range cases {
-		runInstanceMigrateTest(t, "i-abc123", tn, tc.StateVersion, tc.Attributes, tc.Expected, config)
+		runInstanceMigrateTest(t, instanceName, tn, tc.StateVersion, tc.Attributes, tc.Expected, config)
 	}
 }
 
@@ -101,7 +132,7 @@ func TestComputeInstanceMigrateState_empty(t *testing.T) {
 
 	// should handle non-nil but empty
 	is = &terraform.InstanceState{}
-	is, err = resourceComputeInstanceMigrateState(0, is, meta)
+	_, err = resourceComputeInstanceMigrateState(0, is, meta)
 
 	if err != nil {
 		t.Fatalf("err: %#v", err)
@@ -125,7 +156,7 @@ func TestAccComputeInstanceMigrateState_bootDisk(t *testing.T) {
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 		},
@@ -156,7 +187,7 @@ func TestAccComputeInstanceMigrateState_bootDisk(t *testing.T) {
 		"disk.0.device_name":                "persistent-disk-0",
 		"disk.0.disk_encryption_key_raw":    "encrypt-key",
 		"disk.0.disk_encryption_key_sha256": "encrypt-key-sha",
-		"zone": zone,
+		"zone":                              zone,
 	}
 	expected := map[string]string{
 		"boot_disk.#":                            "1",
@@ -192,7 +223,7 @@ func TestAccComputeInstanceMigrateState_v4FixBootDisk(t *testing.T) {
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 		},
@@ -223,7 +254,7 @@ func TestAccComputeInstanceMigrateState_v4FixBootDisk(t *testing.T) {
 		"disk.0.device_name":                "persistent-disk-0",
 		"disk.0.disk_encryption_key_raw":    "encrypt-key",
 		"disk.0.disk_encryption_key_sha256": "encrypt-key-sha",
-		"zone": zone,
+		"zone":                              zone,
 	}
 	expected := map[string]string{
 		"boot_disk.#":                            "1",
@@ -254,7 +285,7 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromSource(t *testing.T) {
 	diskName := fmt.Sprintf("instance-test-%s", acctest.RandString(10))
 	disk := &compute.Disk{
 		Name:        diskName,
-		SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+		SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 		Zone:        zone,
 	}
 	op, err := config.clientCompute.Disks.Insert(config.Project, zone, disk).Do()
@@ -274,7 +305,7 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromSource(t *testing.T) {
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
@@ -305,7 +336,7 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromSource(t *testing.T) {
 		"disk.0.device_name":                "persistent-disk-1",
 		"disk.0.disk_encryption_key_raw":    "encrypt-key",
 		"disk.0.disk_encryption_key_sha256": "encrypt-key-sha",
-		"zone": zone,
+		"zone":                              zone,
 	}
 	expected := map[string]string{
 		"boot_disk.#":                                "1",
@@ -334,7 +365,7 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromSource(t *testing.T
 	diskName := fmt.Sprintf("instance-test-%s", acctest.RandString(10))
 	disk := &compute.Disk{
 		Name:        diskName,
-		SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+		SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 		Zone:        zone,
 	}
 	op, err := config.clientCompute.Disks.Insert(config.Project, zone, disk).Do()
@@ -354,7 +385,7 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromSource(t *testing.T
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
@@ -385,7 +416,7 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromSource(t *testing.T
 		"disk.0.device_name":                "persistent-disk-1",
 		"disk.0.disk_encryption_key_raw":    "encrypt-key",
 		"disk.0.disk_encryption_key_sha256": "encrypt-key-sha",
-		"zone": zone,
+		"zone":                              zone,
 	}
 	expected := map[string]string{
 		"boot_disk.#":                                "1",
@@ -416,13 +447,13 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromEncryptionKey(t *testing
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
 				AutoDelete: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 				DiskEncryptionKey: &compute.CustomerEncryptionKey{
 					RawKey: "SGVsbG8gZnJvbSBHb29nbGUgQ2xvdWQgUGxhdGZvcm0=",
@@ -449,10 +480,10 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromEncryptionKey(t *testing
 	attributes := map[string]string{
 		"boot_disk.#":                       "1",
 		"disk.#":                            "1",
-		"disk.0.image":                      "projects/debian-cloud/global/images/family/debian-8",
+		"disk.0.image":                      "projects/debian-cloud/global/images/family/debian-9",
 		"disk.0.disk_encryption_key_raw":    "SGVsbG8gZnJvbSBHb29nbGUgQ2xvdWQgUGxhdGZvcm0=",
 		"disk.0.disk_encryption_key_sha256": "esTuF7d4eatX4cnc4JsiEiaI+Rff78JgPhA/v1zxX9E=",
-		"zone": zone,
+		"zone":                              zone,
 	}
 	expected := map[string]string{
 		"boot_disk.#":                                "1",
@@ -484,13 +515,13 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromEncryptionKey(t *te
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
 				AutoDelete: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 				DiskEncryptionKey: &compute.CustomerEncryptionKey{
 					RawKey: "SGVsbG8gZnJvbSBHb29nbGUgQ2xvdWQgUGxhdGZvcm0=",
@@ -517,10 +548,10 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromEncryptionKey(t *te
 	attributes := map[string]string{
 		"boot_disk.#":                       "1",
 		"disk.#":                            "1",
-		"disk.0.image":                      "projects/debian-cloud/global/images/family/debian-8",
+		"disk.0.image":                      "projects/debian-cloud/global/images/family/debian-9",
 		"disk.0.disk_encryption_key_raw":    "SGVsbG8gZnJvbSBHb29nbGUgQ2xvdWQgUGxhdGZvcm0=",
 		"disk.0.disk_encryption_key_sha256": "esTuF7d4eatX4cnc4JsiEiaI+Rff78JgPhA/v1zxX9E=",
-		"zone": zone,
+		"zone":                              zone,
 	}
 	expected := map[string]string{
 		"boot_disk.#":                                "1",
@@ -551,19 +582,19 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromAutoDeleteAndImage(t *te
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
 				AutoDelete: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
 				AutoDelete: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/debian-8-jessie-v20170110",
+					SourceImage: "projects/debian-cloud/global/images/debian-9-stretch-v20180814",
 				},
 			},
 		},
@@ -587,9 +618,9 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromAutoDeleteAndImage(t *te
 	attributes := map[string]string{
 		"boot_disk.#":        "1",
 		"disk.#":             "2",
-		"disk.0.image":       "projects/debian-cloud/global/images/debian-8-jessie-v20170110",
+		"disk.0.image":       "projects/debian-cloud/global/images/debian-9-stretch-v20180814",
 		"disk.0.auto_delete": "true",
-		"disk.1.image":       "global/images/family/debian-8",
+		"disk.1.image":       "global/images/family/debian-9",
 		"disk.1.auto_delete": "true",
 		"zone":               zone,
 	}
@@ -600,8 +631,8 @@ func TestAccComputeInstanceMigrateState_attachedDiskFromAutoDeleteAndImage(t *te
 		"attached_disk.0.device_name": "persistent-disk-2",
 		"attached_disk.1.source":      "https://www.googleapis.com/compute/v1/projects/" + config.Project + "/zones/" + zone + "/disks/" + instanceName + "-1",
 		"attached_disk.1.device_name": "persistent-disk-1",
-		"zone":           zone,
-		"create_timeout": "4",
+		"zone":                        zone,
+		"create_timeout":              "4",
 	}
 
 	runInstanceMigrateTest(t, instanceName, "migrate disk to attached disk", 2 /* state version */, attributes, expected, config)
@@ -623,19 +654,19 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromAutoDeleteAndImage(
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
 				AutoDelete: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
 				AutoDelete: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/debian-8-jessie-v20170110",
+					SourceImage: "projects/debian-cloud/global/images/debian-9-stretch-v20180814",
 				},
 			},
 		},
@@ -659,9 +690,9 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromAutoDeleteAndImage(
 	attributes := map[string]string{
 		"boot_disk.#":        "1",
 		"disk.#":             "2",
-		"disk.0.image":       "projects/debian-cloud/global/images/debian-8-jessie-v20170110",
+		"disk.0.image":       "projects/debian-cloud/global/images/debian-9-stretch-v20180814",
 		"disk.0.auto_delete": "true",
-		"disk.1.image":       "global/images/family/debian-8",
+		"disk.1.image":       "global/images/family/debian-9",
 		"disk.1.auto_delete": "true",
 		"zone":               zone,
 	}
@@ -672,7 +703,7 @@ func TestAccComputeInstanceMigrateState_v4FixAttachedDiskFromAutoDeleteAndImage(
 		"attached_disk.0.device_name": "persistent-disk-2",
 		"attached_disk.1.source":      "https://www.googleapis.com/compute/v1/projects/" + config.Project + "/zones/" + zone + "/disks/" + instanceName + "-1",
 		"attached_disk.1.device_name": "persistent-disk-1",
-		"zone": zone,
+		"zone":                        zone,
 	}
 
 	runInstanceMigrateTest(t, instanceName, "migrate disk to attached disk", 4 /* state version */, attributes, expected, config)
@@ -695,7 +726,7 @@ func TestAccComputeInstanceMigrateState_scratchDisk(t *testing.T) {
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
@@ -735,8 +766,8 @@ func TestAccComputeInstanceMigrateState_scratchDisk(t *testing.T) {
 		"boot_disk.#":              "1",
 		"scratch_disk.#":           "1",
 		"scratch_disk.0.interface": "SCSI",
-		"zone":           zone,
-		"create_timeout": "4",
+		"zone":                     zone,
+		"create_timeout":           "4",
 	}
 
 	runInstanceMigrateTest(t, instanceName, "migrate disk to scratch disk", 2 /* state version */, attributes, expected, config)
@@ -759,7 +790,7 @@ func TestAccComputeInstanceMigrateState_v4FixScratchDisk(t *testing.T) {
 			{
 				Boot: true,
 				InitializeParams: &compute.AttachedDiskInitializeParams{
-					SourceImage: "projects/debian-cloud/global/images/family/debian-8",
+					SourceImage: "projects/debian-cloud/global/images/family/debian-9",
 				},
 			},
 			{
@@ -799,7 +830,7 @@ func TestAccComputeInstanceMigrateState_v4FixScratchDisk(t *testing.T) {
 		"boot_disk.#":              "1",
 		"scratch_disk.#":           "1",
 		"scratch_disk.0.interface": "SCSI",
-		"zone": zone,
+		"zone":                     zone,
 	}
 
 	runInstanceMigrateTest(t, instanceName, "migrate disk to scratch disk", 4 /* state version */, attributes, expected, config)
@@ -810,7 +841,7 @@ func runInstanceMigrateTest(t *testing.T, id, testName string, version int, attr
 		ID:         id,
 		Attributes: attributes,
 	}
-	is, err := resourceComputeInstanceMigrateState(version, is, meta)
+	_, err := resourceComputeInstanceMigrateState(version, is, meta)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -868,6 +899,7 @@ func getInitializedConfig(t *testing.T) *Config {
 		Project:     getTestProjectFromEnv(),
 		Credentials: getTestCredsFromEnv(),
 		Region:      getTestRegionFromEnv(),
+		Zone:        getTestZoneFromEnv(),
 	}
 	err := config.loadAndValidate()
 	if err != nil {

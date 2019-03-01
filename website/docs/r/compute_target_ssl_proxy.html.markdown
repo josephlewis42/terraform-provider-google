@@ -27,37 +27,44 @@ Represents a TargetSslProxy resource, which is used by one or more
 global forwarding rule to route incoming SSL requests to a backend
 service.
 
+
 To get more information about TargetSslProxy, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/latest/targetSslProxies)
 * How-to Guides
     * [Setting Up SSL proxy for Google Cloud Load Balancing](https://cloud.google.com/compute/docs/load-balancing/tcp-ssl/)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=target_ssl_proxy_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Target Ssl Proxy Basic
+
 
 ```hcl
 resource "google_compute_target_ssl_proxy" "default" {
-  name = "test"
-  backend_service = "${google_compute_backend_service.default.self_link}"
+  name             = "test-proxy"
+  backend_service  = "${google_compute_backend_service.default.self_link}"
   ssl_certificates = ["${google_compute_ssl_certificate.default.self_link}"]
 }
 
 resource "google_compute_ssl_certificate" "default" {
-  name = "default-cert"
-  private_key = "${file("path/to/test.key")}"
-  certificate = "${file("path/to/test.crt")}"
+  name        = "default-cert"
+  private_key = "${file("path/to/private.key")}"
+  certificate = "${file("path/to/certificate.crt")}"
 }
 
 resource "google_compute_backend_service" "default" {
-  name = "default-backend"
-  protocol    = "SSL"
+  name          = "backend-service"
+  protocol      = "SSL"
   health_checks = ["${google_compute_health_check.default.self_link}"]
 }
 
 resource "google_compute_health_check" "default" {
-  name = "default-health-check"
+  name               = "health-check"
   check_interval_sec = 1
-  timeout_sec = 1
+  timeout_sec        = 1
   tcp_health_check {
     port = "443"
   }
@@ -68,6 +75,7 @@ resource "google_compute_health_check" "default" {
 
 The following arguments are supported:
 
+
 * `name` -
   (Required)
   Name of the resource. Provided by the client when the resource is
@@ -77,9 +85,11 @@ The following arguments are supported:
   first character must be a lowercase letter, and all following
   characters must be a dash, lowercase letter, or digit, except the last
   character, which cannot be a dash.
+
 * `backend_service` -
   (Required)
   A reference to the BackendService resource.
+
 * `ssl_certificates` -
   (Required)
   A list of SslCertificate resources that are used to authenticate
@@ -89,19 +99,22 @@ The following arguments are supported:
 
 - - -
 
+
 * `description` -
   (Optional)
   An optional description of this resource.
+
 * `proxy_header` -
   (Optional)
   Specifies the type of proxy header to append before sending data to
   the backend, either NONE or PROXY_V1. The default is NONE.
+
 * `ssl_policy` -
   (Optional)
   A reference to the SslPolicy resource that will be associated with
   the TargetSslProxy resource. If not set, the TargetSslProxy
   resource will not have any SSL policy configured.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
 
@@ -109,8 +122,10 @@ The following arguments are supported:
 
 In addition to the arguments listed above, the following computed attributes are exported:
 
+
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
+
 * `proxy_id` -
   The unique identifier for the resource.
 * `self_link` - The URI of the created resource.
@@ -134,3 +149,6 @@ $ terraform import google_compute_target_ssl_proxy.default projects/{{project}}/
 $ terraform import google_compute_target_ssl_proxy.default {{project}}/{{name}}
 $ terraform import google_compute_target_ssl_proxy.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

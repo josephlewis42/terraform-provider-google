@@ -17,28 +17,28 @@ func resourceStorageBucketAcl() *schema.Resource {
 		Read:          resourceStorageBucketAclRead,
 		Update:        resourceStorageBucketAclUpdate,
 		Delete:        resourceStorageBucketAclDelete,
-		CustomizeDiff: resourceStorageBucketAclCustomizeDiff,
+		CustomizeDiff: resourceStorageRoleEntityCustomizeDiff,
 
 		Schema: map[string]*schema.Schema{
-			"bucket": &schema.Schema{
+			"bucket": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"default_acl": &schema.Schema{
+			"default_acl": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 
-			"predefined_acl": &schema.Schema{
+			"predefined_acl": {
 				Type:          schema.TypeString,
 				Optional:      true,
 				ForceNew:      true,
 				ConflictsWith: []string{"role_entity"},
 			},
 
-			"role_entity": &schema.Schema{
+			"role_entity": {
 				Type:          schema.TypeList,
 				Optional:      true,
 				Computed:      true,
@@ -49,7 +49,7 @@ func resourceStorageBucketAcl() *schema.Resource {
 	}
 }
 
-func resourceStorageBucketAclCustomizeDiff(diff *schema.ResourceDiff, meta interface{}) error {
+func resourceStorageRoleEntityCustomizeDiff(diff *schema.ResourceDiff, meta interface{}) error {
 	keys := diff.GetChangedKeysPrefix("role_entity")
 	if len(keys) < 1 {
 		return nil
@@ -68,7 +68,7 @@ func resourceStorageBucketAclCustomizeDiff(diff *schema.ResourceDiff, meta inter
 	if len(state) != len(conf) {
 		return nil
 	}
-	for k, _ := range state {
+	for k := range state {
 		if _, ok := conf[k]; !ok {
 			return nil
 		}
@@ -122,7 +122,7 @@ func resourceStorageBucketAclCreate(d *schema.ResourceData, meta interface{}) er
 			return fmt.Errorf("Error reading bucket %s: %v", bucket, err)
 		}
 
-		res, err = config.clientStorage.Buckets.Update(bucket,
+		_, err = config.clientStorage.Buckets.Update(bucket,
 			res).PredefinedAcl(predefined_acl).Do()
 
 		if err != nil {
@@ -175,7 +175,7 @@ func resourceStorageBucketAclCreate(d *schema.ResourceData, meta interface{}) er
 			return fmt.Errorf("Error reading bucket %s: %v", bucket, err)
 		}
 
-		res, err = config.clientStorage.Buckets.Update(bucket,
+		_, err = config.clientStorage.Buckets.Update(bucket,
 			res).PredefinedDefaultObjectAcl(default_acl).Do()
 
 		if err != nil {
@@ -297,7 +297,7 @@ func resourceStorageBucketAclUpdate(d *schema.ResourceData, meta interface{}) er
 			return fmt.Errorf("Error reading bucket %s: %v", bucket, err)
 		}
 
-		res, err = config.clientStorage.Buckets.Update(bucket,
+		_, err = config.clientStorage.Buckets.Update(bucket,
 			res).PredefinedDefaultObjectAcl(default_acl).Do()
 
 		if err != nil {

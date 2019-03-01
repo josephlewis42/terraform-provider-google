@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gammazero/workerpool"
 	"github.com/hashicorp/terraform/helper/hashcode"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
@@ -28,25 +30,44 @@ func resourceStorageBucket() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"force_destroy": &schema.Schema{
+			"encryption": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"default_kms_key_name": {
+							Type:     schema.TypeString,
+							Required: true,
+						},
+					},
+				},
+			},
+
+			"requester_pays": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+
+			"force_destroy": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
 			},
 
-			"labels": &schema.Schema{
+			"labels": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 
-			"location": &schema.Schema{
+			"location": {
 				Type:     schema.TypeString,
 				Default:  "US",
 				Optional: true,
@@ -56,31 +77,31 @@ func resourceStorageBucket() *schema.Resource {
 				},
 			},
 
-			"predefined_acl": &schema.Schema{
+			"predefined_acl": {
 				Type:     schema.TypeString,
 				Removed:  "Please use resource \"storage_bucket_acl.predefined_acl\" instead.",
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"project": &schema.Schema{
+			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
 			},
 
-			"self_link": &schema.Schema{
+			"self_link": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"url": &schema.Schema{
+			"url": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"storage_class": &schema.Schema{
+			"storage_class": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "STANDARD",
@@ -149,7 +170,7 @@ func resourceStorageBucket() *schema.Resource {
 				},
 			},
 
-			"versioning": &schema.Schema{
+			"versioning": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
@@ -164,16 +185,16 @@ func resourceStorageBucket() *schema.Resource {
 				},
 			},
 
-			"website": &schema.Schema{
+			"website": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"main_page_suffix": &schema.Schema{
+						"main_page_suffix": {
 							Type:     schema.TypeString,
 							Optional: true,
 						},
-						"not_found_page": &schema.Schema{
+						"not_found_page": {
 							Type:     schema.TypeString,
 							Optional: true,
 						},
@@ -181,50 +202,50 @@ func resourceStorageBucket() *schema.Resource {
 				},
 			},
 
-			"cors": &schema.Schema{
+			"cors": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"origin": &schema.Schema{
+						"origin": {
 							Type:     schema.TypeList,
 							Optional: true,
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
 						},
-						"method": &schema.Schema{
+						"method": {
 							Type:     schema.TypeList,
 							Optional: true,
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
 						},
-						"response_header": &schema.Schema{
+						"response_header": {
 							Type:     schema.TypeList,
 							Optional: true,
 							Elem: &schema.Schema{
 								Type: schema.TypeString,
 							},
 						},
-						"max_age_seconds": &schema.Schema{
+						"max_age_seconds": {
 							Type:     schema.TypeInt,
 							Optional: true,
 						},
 					},
 				},
 			},
-			"logging": &schema.Schema{
+			"logging": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"log_bucket": &schema.Schema{
+						"log_bucket": {
 							Type:     schema.TypeString,
 							Required: true,
 						},
-						"log_object_prefix": &schema.Schema{
+						"log_object_prefix": {
 							Type:     schema.TypeString,
 							Optional: true,
 							Computed: true,
@@ -244,11 +265,11 @@ func resourceStorageBucketCreate(d *schema.ResourceData, meta interface{}) error
 		return err
 	}
 
-	// Get the bucket and acl
+	// Get the bucket and location
 	bucket := d.Get("name").(string)
 	location := d.Get("location").(string)
 
-	// Create a bucket, setting the acl, location and name.
+	// Create a bucket, setting the labels, location and name.
 	sb := &storage.Bucket{
 		Name:     bucket,
 		Labels:   expandLabels(d),
@@ -295,6 +316,16 @@ func resourceStorageBucketCreate(d *schema.ResourceData, meta interface{}) error
 		sb.Logging = expandBucketLogging(v.([]interface{}))
 	}
 
+	if v, ok := d.GetOk("encryption"); ok {
+		sb.Encryption = expandBucketEncryption(v.([]interface{}))
+	}
+
+	if v, ok := d.GetOk("requester_pays"); ok {
+		sb.Billing = &storage.BucketBilling{
+			RequesterPays: v.(bool),
+		}
+	}
+
 	var res *storage.Bucket
 
 	err = retry(func() error {
@@ -324,6 +355,14 @@ func resourceStorageBucketUpdate(d *schema.ResourceData, meta interface{}) error
 		}
 	}
 
+	if d.HasChange("requester_pays") {
+		v := d.Get("requester_pays")
+		sb.Billing = &storage.BucketBilling{
+			RequesterPays:   v.(bool),
+			ForceSendFields: []string{"RequesterPays"},
+		}
+	}
+
 	if d.HasChange("versioning") {
 		if v, ok := d.GetOk("versioning"); ok {
 			sb.Versioning = expandBucketVersioning(v)
@@ -340,7 +379,7 @@ func resourceStorageBucketUpdate(d *schema.ResourceData, meta interface{}) error
 
 			// Setting fields to "" to be explicit that the PATCH call will
 			// delete this field.
-			if len(websites) == 0 {
+			if len(websites) == 0 || websites[0] == nil {
 				sb.Website.NotFoundPage = ""
 				sb.Website.MainPageSuffix = ""
 			} else {
@@ -370,6 +409,14 @@ func resourceStorageBucketUpdate(d *schema.ResourceData, meta interface{}) error
 			sb.Logging = expandBucketLogging(v.([]interface{}))
 		} else {
 			sb.NullFields = append(sb.NullFields, "Logging")
+		}
+	}
+
+	if d.HasChange("encryption") {
+		if v, ok := d.GetOk("encryption"); ok {
+			sb.Encryption = expandBucketEncryption(v.([]interface{}))
+		} else {
+			sb.NullFields = append(sb.NullFields, "Encryption")
 		}
 	}
 
@@ -438,12 +485,20 @@ func resourceStorageBucketRead(d *schema.ResourceData, meta interface{}) error {
 	d.Set("self_link", res.SelfLink)
 	d.Set("url", fmt.Sprintf("gs://%s", bucket))
 	d.Set("storage_class", res.StorageClass)
+	d.Set("encryption", flattenBucketEncryption(res.Encryption))
 	d.Set("location", res.Location)
 	d.Set("cors", flattenCors(res.Cors))
 	d.Set("logging", flattenBucketLogging(res.Logging))
 	d.Set("versioning", flattenBucketVersioning(res.Versioning))
 	d.Set("lifecycle_rule", flattenBucketLifecycle(res.Lifecycle))
 	d.Set("labels", res.Labels)
+
+	if res.Billing == nil {
+		d.Set("requester_pays", nil)
+	} else {
+		d.Set("requester_pays", res.Billing.RequesterPays)
+	}
+
 	d.SetId(res.Id)
 	return nil
 }
@@ -463,22 +518,46 @@ func resourceStorageBucketDelete(d *schema.ResourceData, meta interface{}) error
 
 		if len(res.Items) != 0 {
 			if d.Get("force_destroy").(bool) {
-				// purge the bucket...
+				// GCS requires that a bucket be empty (have no objects or object
+				// versions) before it can be deleted.
 				log.Printf("[DEBUG] GCS Bucket attempting to forceDestroy\n\n")
+
+				// Create a workerpool for parallel deletion of resources. In the
+				// future, it would be great to expose Terraform's global parallelism
+				// flag here, but that's currently reserved for core use. Testing
+				// shows that NumCPUs-1 is the most performant on average networks.
+				//
+				// The challenge with making this user-configurable is that the
+				// configuration would reside in the Terraform configuration file,
+				// decreasing its portability. Ideally we'd want this to connect to
+				// Terraform's top-level -parallelism flag, but that's not plumbed nor
+				// is it scheduled to be plumbed to individual providers.
+				wp := workerpool.New(runtime.NumCPU() - 1)
 
 				for _, object := range res.Items {
 					log.Printf("[DEBUG] Found %s", object.Name)
-					if err := config.clientStorage.Objects.Delete(bucket, object.Name).Generation(object.Generation).Do(); err != nil {
-						log.Fatalf("Error trying to delete object: %s %s\n\n", object.Name, err)
-					} else {
-						log.Printf("Object deleted: %s \n\n", object.Name)
-					}
+					object := object
+
+					wp.Submit(func() {
+						log.Printf("[TRACE] Attempting to delete %s", object.Name)
+						if err := config.clientStorage.Objects.Delete(bucket, object.Name).Generation(object.Generation).Do(); err != nil {
+							// We should really return an error here, but it doesn't really
+							// matter since the following step (bucket deletion) will fail
+							// with an error indicating objects are still present, and this
+							// log line will point to that object.
+							log.Printf("[ERR] Failed to delete storage object %s: %s", object.Name, err)
+						} else {
+							log.Printf("[TRACE] Successfully deleted %s", object.Name)
+						}
+					})
 				}
 
+				// Wait for everything to finish.
+				wp.StopWait()
 			} else {
-				delete_err := errors.New("Error trying to delete a bucket containing objects without `force_destroy` set to true")
-				log.Printf("Error! %s : %s\n\n", bucket, delete_err)
-				return delete_err
+				deleteErr := errors.New("Error trying to delete a bucket containing objects without `force_destroy` set to true")
+				log.Printf("Error! %s : %s\n\n", bucket, deleteErr)
+				return deleteErr
 			}
 		} else {
 			break // 0 items, bucket empty
@@ -540,6 +619,36 @@ func flattenCors(corsRules []*storage.BucketCors) []map[string]interface{} {
 		corsRulesSchema = append(corsRulesSchema, data)
 	}
 	return corsRulesSchema
+}
+
+func expandBucketEncryption(configured interface{}) *storage.BucketEncryption {
+	encs := configured.([]interface{})
+	if encs == nil || encs[0] == nil {
+		return nil
+	}
+	enc := encs[0].(map[string]interface{})
+	keyname := enc["default_kms_key_name"]
+	if keyname == nil || keyname.(string) == "" {
+		return nil
+	}
+	bucketenc := &storage.BucketEncryption{
+		DefaultKmsKeyName: keyname.(string),
+	}
+	return bucketenc
+}
+
+func flattenBucketEncryption(enc *storage.BucketEncryption) []map[string]interface{} {
+	encryption := make([]map[string]interface{}, 0, 1)
+
+	if enc == nil {
+		return encryption
+	}
+
+	encryption = append(encryption, map[string]interface{}{
+		"default_kms_key_name": enc.DefaultKmsKeyName,
+	})
+
+	return encryption
 }
 
 func expandBucketLogging(configured interface{}) *storage.BucketLogging {

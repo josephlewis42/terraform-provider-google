@@ -1,7 +1,6 @@
 package google
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log"
@@ -23,14 +22,14 @@ func resourceComputeBackendService() *schema.Resource {
 		SchemaVersion: 1,
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ForceNew:     true,
 				ValidateFunc: validateGCPName,
 			},
 
-			"health_checks": &schema.Schema{
+			"health_checks": {
 				Type:     schema.TypeSet,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Set:      selfLinkRelativePathHash,
@@ -39,73 +38,72 @@ func resourceComputeBackendService() *schema.Resource {
 				MaxItems: 1,
 			},
 
-			"iap": &schema.Schema{
+			"iap": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"oauth2_client_id": &schema.Schema{
+						"oauth2_client_id": {
 							Type:     schema.TypeString,
 							Required: true,
 						},
-						"oauth2_client_secret": &schema.Schema{
+						"oauth2_client_secret": {
 							Type:      schema.TypeString,
 							Required:  true,
 							Sensitive: true,
-							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								if old == fmt.Sprintf("%x", sha256.Sum256([]byte(new))) {
-									return true
-								}
-								return false
-							},
+						},
+						"oauth2_client_secret_sha256": {
+							Type:      schema.TypeString,
+							Computed:  true,
+							Sensitive: true,
 						},
 					},
 				},
 			},
 
-			"backend": &schema.Schema{
+			"backend": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Set:      resourceGoogleComputeBackendServiceBackendHash,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"group": &schema.Schema{
+						"group": {
 							Type:             schema.TypeString,
 							Optional:         true,
 							DiffSuppressFunc: compareSelfLinkRelativePaths,
 						},
-						"balancing_mode": &schema.Schema{
+						"balancing_mode": {
 							Type:     schema.TypeString,
 							Optional: true,
 							Default:  "UTILIZATION",
 						},
-						"capacity_scaler": &schema.Schema{
+						"capacity_scaler": {
 							Type:     schema.TypeFloat,
 							Optional: true,
 							Default:  1,
 						},
-						"description": &schema.Schema{
+						"description": {
 							Type:     schema.TypeString,
 							Optional: true,
 						},
-						"max_rate": &schema.Schema{
+						"max_rate": {
 							Type:     schema.TypeInt,
 							Optional: true,
 						},
-						"max_rate_per_instance": &schema.Schema{
+						"max_rate_per_instance": {
 							Type:     schema.TypeFloat,
 							Optional: true,
 						},
-						"max_connections": &schema.Schema{
+						"max_connections": {
 							Type:     schema.TypeInt,
 							Optional: true,
 						},
-						"max_connections_per_instance": &schema.Schema{
+						"max_connections_per_instance": {
 							Type:     schema.TypeInt,
 							Optional: true,
 						},
-						"max_utilization": &schema.Schema{
+						"max_utilization": {
 							Type:     schema.TypeFloat,
 							Optional: true,
 							Default:  0.8,
@@ -114,38 +112,38 @@ func resourceComputeBackendService() *schema.Resource {
 				},
 			},
 
-			"cdn_policy": &schema.Schema{
+			"cdn_policy": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Computed: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"cache_key_policy": &schema.Schema{
+						"cache_key_policy": {
 							Type:     schema.TypeList,
 							Optional: true,
 							MaxItems: 1,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"include_host": &schema.Schema{
+									"include_host": {
 										Type:     schema.TypeBool,
 										Optional: true,
 									},
-									"include_protocol": &schema.Schema{
+									"include_protocol": {
 										Type:     schema.TypeBool,
 										Optional: true,
 									},
-									"include_query_string": &schema.Schema{
+									"include_query_string": {
 										Type:     schema.TypeBool,
 										Optional: true,
 									},
-									"query_string_blacklist": &schema.Schema{
+									"query_string_blacklist": {
 										Type:          schema.TypeSet,
 										Optional:      true,
 										Elem:          &schema.Schema{Type: schema.TypeString},
 										ConflictsWith: []string{"cdn_policy.0.cache_key_policy.query_string_whitelist"},
 									},
-									"query_string_whitelist": &schema.Schema{
+									"query_string_whitelist": {
 										Type:          schema.TypeSet,
 										Optional:      true,
 										Elem:          &schema.Schema{Type: schema.TypeString},
@@ -158,79 +156,85 @@ func resourceComputeBackendService() *schema.Resource {
 				},
 			},
 
-			"custom_request_headers": &schema.Schema{
+			"custom_request_headers": {
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Set:      schema.HashString,
 			},
 
-			"description": &schema.Schema{
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 
-			"enable_cdn": &schema.Schema{
+			"enable_cdn": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
 			},
 
-			"fingerprint": &schema.Schema{
+			"fingerprint": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"port_name": &schema.Schema{
+			"port_name": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"project": &schema.Schema{
+			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
 			},
 
-			"protocol": &schema.Schema{
+			"protocol": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"region": &schema.Schema{
+			"region": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 				Removed:  "region has been removed as it was never used. For internal load balancing, use google_compute_region_backend_service",
 			},
 
-			"security_policy": &schema.Schema{
+			"security_policy": {
 				Type:             schema.TypeString,
 				Optional:         true,
 				DiffSuppressFunc: compareSelfLinkOrResourceName,
 			},
 
-			"self_link": &schema.Schema{
+			"self_link": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"session_affinity": &schema.Schema{
+			"session_affinity": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
 
-			"timeout_sec": &schema.Schema{
+			"affinity_cookie_ttl_sec": {
+				Type:     schema.TypeInt,
+				Optional: true,
+			},
+
+			"timeout_sec": {
 				Type:     schema.TypeInt,
 				Optional: true,
 				Computed: true,
 			},
 
-			"connection_draining_timeout_sec": &schema.Schema{
+			"connection_draining_timeout_sec": {
 				Type:     schema.TypeInt,
 				Optional: true,
 				Default:  300,
@@ -274,6 +278,9 @@ func resourceComputeBackendServiceCreate(d *schema.ResourceData, meta interface{
 
 	if v, ok := d.GetOk("security_policy"); ok {
 		pol, err := ParseSecurityPolicyFieldValue(v.(string), d, config)
+		if err != nil {
+			return errwrap.Wrapf("Error parsing Backend Service security policy: {{err}}", err)
+		}
 		op, err := config.clientComputeBeta.BackendServices.SetSecurityPolicy(
 			project, service.Name, &computeBeta.SecurityPolicyReference{
 				SecurityPolicy: pol.RelativeLink(),
@@ -309,20 +316,26 @@ func resourceComputeBackendServiceRead(d *schema.ResourceData, meta interface{})
 	d.Set("port_name", service.PortName)
 	d.Set("protocol", service.Protocol)
 	d.Set("session_affinity", service.SessionAffinity)
+	d.Set("affinity_cookie_ttl_sec", service.AffinityCookieTtlSec)
 	d.Set("timeout_sec", service.TimeoutSec)
 	d.Set("fingerprint", service.Fingerprint)
 	d.Set("self_link", ConvertSelfLinkToV1(service.SelfLink))
 	d.Set("backend", flattenBackends(service.Backends))
 	d.Set("connection_draining_timeout_sec", service.ConnectionDraining.DrainingTimeoutSec)
-	d.Set("iap", flattenIap(service.Iap))
+	d.Set("iap", flattenIap(d, service.Iap))
 	d.Set("project", project)
-	d.Set("health_checks", service.HealthChecks)
+	guardedHealthChecks := make([]string, len(service.HealthChecks))
+	for i, v := range service.HealthChecks {
+		guardedHealthChecks[i] = ConvertSelfLinkToV1(v)
+	}
+
+	d.Set("health_checks", guardedHealthChecks)
 	if err := d.Set("cdn_policy", flattenCdnPolicy(service.CdnPolicy)); err != nil {
 		return err
 	}
 	d.Set("security_policy", service.SecurityPolicy)
-	d.Set("custom_request_headers", service.CustomRequestHeaders)
 
+	d.Set("custom_request_headers", nil)
 	return nil
 }
 
@@ -398,33 +411,30 @@ func resourceComputeBackendServiceDelete(d *schema.ResourceData, meta interface{
 }
 
 func expandIap(configured []interface{}) *computeBeta.BackendServiceIAP {
-	if len(configured) == 0 {
+	if len(configured) == 0 || configured[0] == nil {
 		return nil
 	}
-	if data, ok := configured[0].(map[string]interface{}); ok {
-		return &computeBeta.BackendServiceIAP{
-			Enabled:            true,
-			Oauth2ClientId:     data["oauth2_client_id"].(string),
-			Oauth2ClientSecret: data["oauth2_client_secret"].(string),
-			ForceSendFields:    []string{"Enabled", "Oauth2ClientId", "Oauth2ClientSecret"},
-		}
-	}
 
-	return nil
+	data := configured[0].(map[string]interface{})
+	return &computeBeta.BackendServiceIAP{
+		Enabled:            true,
+		Oauth2ClientId:     data["oauth2_client_id"].(string),
+		Oauth2ClientSecret: data["oauth2_client_secret"].(string),
+		ForceSendFields:    []string{"Enabled", "Oauth2ClientId", "Oauth2ClientSecret"},
+	}
 }
 
-func flattenIap(iap *computeBeta.BackendServiceIAP) []map[string]interface{} {
+func flattenIap(d *schema.ResourceData, iap *computeBeta.BackendServiceIAP) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0, 1)
 	if iap == nil || !iap.Enabled {
 		return result
 	}
 
-	result = append(result, map[string]interface{}{
-		"oauth2_client_id":     iap.Oauth2ClientId,
-		"oauth2_client_secret": iap.Oauth2ClientSecretSha256,
+	return append(result, map[string]interface{}{
+		"oauth2_client_id":            iap.Oauth2ClientId,
+		"oauth2_client_secret":        d.Get("iap.0.oauth2_client_secret"),
+		"oauth2_client_secret_sha256": iap.Oauth2ClientSecretSha256,
 	})
-
-	return result
 }
 
 func expandBackends(configured []interface{}) ([]*computeBeta.Backend, error) {
@@ -533,7 +543,6 @@ func expandBackendService(d *schema.ResourceData) (*computeBeta.BackendService, 
 				ForceSendFields: []string{"IncludeProtocol", "IncludeHost", "IncludeQueryString", "QueryStringWhitelist", "QueryStringBlacklist"},
 			},
 		},
-		CustomRequestHeaders: convertStringSet(d.Get("custom_request_headers").(*schema.Set)),
 	}
 
 	if v, ok := d.GetOk("iap"); ok {
@@ -564,6 +573,10 @@ func expandBackendService(d *schema.ResourceData) (*computeBeta.BackendService, 
 		service.SessionAffinity = v.(string)
 	}
 
+	if v, ok := d.GetOk("affinity_cookie_ttl_sec"); ok {
+		service.AffinityCookieTtlSec = int64(v.(int))
+	}
+
 	if v, ok := d.GetOk("timeout_sec"); ok {
 		service.TimeoutSec = int64(v.(int))
 	}
@@ -590,11 +603,11 @@ func expandBackendService(d *schema.ResourceData) (*computeBeta.BackendService, 
 }
 
 func expandCdnPolicy(configured []interface{}) *computeBeta.BackendServiceCdnPolicy {
-	if len(configured) == 0 {
+	if len(configured) == 0 || configured[0] == nil {
 		return nil
 	}
-	data := configured[0].(map[string]interface{})
 
+	data := configured[0].(map[string]interface{})
 	ckp := data["cache_key_policy"].([]interface{})
 	if len(ckp) == 0 {
 		return nil

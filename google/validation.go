@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/helper/validation"
@@ -42,6 +43,8 @@ var (
 	}
 	ServiceAccountLinkRegex = ServiceAccountLinkRegexPrefix + "(" + strings.Join(PossibleServiceAccountNames, "|") + ")"
 
+	ServiceAccountKeyNameRegex = ServiceAccountLinkRegexPrefix + "(.+)/keys/(.+)"
+
 	// Format of service accounts created through the API
 	CreatedServiceAccountNameRegex = fmt.Sprintf(RFC1035NameTemplate, 4, 28) + "@" + ProjectNameInDNSFormRegex + "\\.iam\\.gserviceaccount\\.com$"
 	ProjectNameInDNSFormRegex      = "[-a-z0-9\\.]{1,63}"
@@ -49,7 +52,6 @@ var (
 	// Format of default App Engine service accounts created by Google
 	AppEngineServiceAccountNameRegex = ProjectRegex + "@appspot.gserviceaccount.com"
 
-	ProjectIDRegex   = "^[a-z][a-z0-9-]{4,28}[a-z0-9]$"
 	ProjectNameRegex = "^[A-Za-z0-9-'\"\\s!]{4,30}$"
 )
 
@@ -166,7 +168,7 @@ func validateProjectID() schema.SchemaValidateFunc {
 	return func(v interface{}, k string) (ws []string, errors []error) {
 		value := v.(string)
 
-		if !regexp.MustCompile(ProjectIDRegex).MatchString(value) {
+		if !regexp.MustCompile("^" + ProjectRegex + "$").MatchString(value) {
 			errors = append(errors, fmt.Errorf(
 				"%q project_id must be 6 to 30 with lowercase letters, digits, hyphens and start with a letter. Trailing hyphens are prohibited.", value))
 		}
@@ -182,6 +184,45 @@ func validateProjectName() schema.SchemaValidateFunc {
 			errors = append(errors, fmt.Errorf(
 				"%q name must be 4 to 30 characters with lowercase and uppercase letters, numbers, hyphen, single-quote, double-quote, space, and exclamation point.", value))
 		}
+		return
+	}
+}
+
+func validateDuration() schema.SchemaValidateFunc {
+	return func(i interface{}, k string) (s []string, es []error) {
+		v, ok := i.(string)
+		if !ok {
+			es = append(es, fmt.Errorf("expected type of %s to be string", k))
+			return
+		}
+
+		if _, err := time.ParseDuration(v); err != nil {
+			es = append(es, fmt.Errorf("expected %s to be a duration, but parsing gave an error: %s", k, err.Error()))
+			return
+		}
+
+		return
+	}
+}
+
+// StringNotInSlice returns a SchemaValidateFunc which tests if the provided value
+// is of type string and that it matches none of the element in the invalid slice.
+// if ignorecase is true, case is ignored.
+func StringNotInSlice(invalid []string, ignoreCase bool) schema.SchemaValidateFunc {
+	return func(i interface{}, k string) (s []string, es []error) {
+		v, ok := i.(string)
+		if !ok {
+			es = append(es, fmt.Errorf("expected type of %s to be string", k))
+			return
+		}
+
+		for _, str := range invalid {
+			if v == str || (ignoreCase && strings.ToLower(v) == strings.ToLower(str)) {
+				es = append(es, fmt.Errorf("expected %s to not match any of %v, got %s", k, invalid, v))
+				return
+			}
+		}
+
 		return
 	}
 }

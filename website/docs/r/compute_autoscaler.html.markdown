@@ -27,58 +27,28 @@ Autoscalers allow you to automatically scale virtual machine instances in
 managed instance groups according to an autoscaling policy that you
 define.
 
+
 To get more information about Autoscaler, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/rest/v1/autoscalers)
 * How-to Guides
     * [Autoscaling Groups of Instances](https://cloud.google.com/compute/docs/autoscaler/)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=autoscaler_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Autoscaler Basic
+
 
 ```hcl
-resource "google_compute_instance_template" "foobar" {
-  name           = "foobar"
-  machine_type   = "n1-standard-1"
-  can_ip_forward = false
-
-  tags = ["foo", "bar"]
-
-  disk {
-    source_image = "debian-cloud/debian-8"
-  }
-
-  network_interface {
-    network = "default"
-  }
-
-  metadata {
-    foo = "bar"
-  }
-
-  service_account {
-    scopes = ["userinfo-email", "compute-ro", "storage-ro"]
-  }
-}
-
-resource "google_compute_target_pool" "foobar" {
-  name = "foobar"
-}
-
-resource "google_compute_instance_group_manager" "foobar" {
-  name = "foobar"
-  zone = "us-central1-f"
-
-  instance_template  = "${google_compute_instance_template.foobar.self_link}"
-  target_pools       = ["${google_compute_target_pool.foobar.self_link}"]
-  base_instance_name = "foobar"
-}
-
 resource "google_compute_autoscaler" "foobar" {
-  name   = "scaler"
+  name   = "my-autoscaler"
   zone   = "us-central1-f"
   target = "${google_compute_instance_group_manager.foobar.self_link}"
 
-  autoscaling_policy = {
+  autoscaling_policy {
     max_replicas    = 5
     min_replicas    = 1
     cooldown_period = 60
@@ -88,11 +58,54 @@ resource "google_compute_autoscaler" "foobar" {
     }
   }
 }
+
+resource "google_compute_instance_template" "foobar" {
+  name           = "my-instance-template"
+  machine_type   = "n1-standard-1"
+  can_ip_forward = false
+
+  tags = ["foo", "bar"]
+
+  disk {
+    source_image = "${data.google_compute_image.debian_9.self_link}"
+  }
+
+  network_interface {
+    network = "default"
+  }
+
+  metadata = {
+    foo = "bar"
+  }
+
+  service_account {
+    scopes = ["userinfo-email", "compute-ro", "storage-ro"]
+  }
+}
+
+resource "google_compute_target_pool" "foobar" {
+  name = "my-target-pool"
+}
+
+resource "google_compute_instance_group_manager" "foobar" {
+  name = "my-igm"
+  zone = "us-central1-f"
+
+  instance_template  = "${google_compute_instance_template.foobar.self_link}"
+  target_pools       = ["${google_compute_target_pool.foobar.self_link}"]
+  base_instance_name = "foobar"
+}
+
+data "google_compute_image" "debian_9" {
+	family  = "debian-9"
+	project = "debian-cloud"
+}
 ```
 
 ## Argument Reference
 
 The following arguments are supported:
+
 
 * `name` -
   (Required)
@@ -101,31 +114,36 @@ The following arguments are supported:
   first character must be a lowercase letter, and all following
   characters must be a dash, lowercase letter, or digit, except the last
   character, which cannot be a dash.
+
 * `autoscaling_policy` -
   (Required)
   The configuration parameters for the autoscaling algorithm. You can
   define one or more of the policies for an autoscaler: cpuUtilization,
   customMetricUtilizations, and loadBalancingUtilization.
-
   If none of these are specified, the default will be to autoscale based
   on cpuUtilization to 0.6 or 60%.  Structure is documented below.
+
 * `target` -
   (Required)
   URL of the managed instance group that this autoscaler will scale.
 
+
 The `autoscaling_policy` block supports:
+
 * `min_replicas` -
   (Required)
   The minimum number of replicas that the autoscaler can scale down
   to. This cannot be less than 0. If not provided, autoscaler will
   choose a default value depending on maximum number of instances
   allowed.
+
 * `max_replicas` -
   (Required)
   The maximum number of instances that the autoscaler can scale up
   to. This is required when creating or updating an autoscaler. The
   maximum number of replicas should not be lower than minimal number
   of replicas.
+
 * `cooldown_period` -
   (Optional)
   The number of seconds that the autoscaler should wait before it
@@ -133,88 +151,95 @@ The `autoscaling_policy` block supports:
   the autoscaler from collecting information when the instance is
   initializing, during which the collected usage would not be
   reliable. The default time autoscaler waits is 60 seconds.
-
   Virtual machine initialization times might vary because of
   numerous factors. We recommend that you test how long an
   instance may take to initialize. To do this, create an instance
   and time the startup process.
+
 * `cpu_utilization` -
   (Optional)
   Defines the CPU utilization policy that allows the autoscaler to
   scale based on the average CPU utilization of a managed instance
   group.  Structure is documented below.
+
 * `metric` -
   (Optional)
   Defines the CPU utilization policy that allows the autoscaler to
   scale based on the average CPU utilization of a managed instance
   group.  Structure is documented below.
+
 * `load_balancing_utilization` -
   (Optional)
   Configuration parameters of autoscaling based on a load balancer.  Structure is documented below.
-        The `cpu_utilization` block supports:
+
+
+The `cpu_utilization` block supports:
+
 * `target` -
   (Required)
   The target CPU utilization that the autoscaler should maintain.
   Must be a float value in the range (0, 1]. If not specified, the
   default is 0.6.
-
   If the CPU level is below the target utilization, the autoscaler
   scales down the number of instances until it reaches the minimum
   number of instances you specified or until the average CPU of
   your instances reaches the target utilization.
-
   If the average CPU is above the target utilization, the autoscaler
   scales up until it reaches the maximum number of instances you
   specified or until the average utilization reaches the target
   utilization.
-  
-  The `metric` block supports:
+
+The `metric` block supports:
+
 * `name` -
   (Required)
   The identifier (type) of the Stackdriver Monitoring metric.
   The metric cannot have negative values.
-
   The metric must have a value type of INT64 or DOUBLE.
+
 * `target` -
   (Required)
   The target value of the metric that autoscaler should
   maintain. This must be a positive value. A utilization
   metric scales number of virtual machines handling requests
   to increase or decrease proportionally to the metric.
-
   For example, a good metric to use as a utilizationTarget is
   www.googleapis.com/compute/instance/network/received_bytes_count.
   The autoscaler will work to keep this value constant for each
   of the instances.
+
 * `type` -
   (Required)
   Defines how target utilization value is expressed for a
   Stackdriver Monitoring metric. Either GAUGE, DELTA_PER_SECOND,
   or DELTA_PER_MINUTE.
-      
-  The `load_balancing_utilization` block supports:
+
+The `load_balancing_utilization` block supports:
+
 * `target` -
   (Required)
   Fraction of backend capacity utilization (set in HTTP(s) load
   balancing configuration) that autoscaler should maintain. Must
   be a positive float value. If not defined, the default is 0.8.
-  
 
 - - -
+
 
 * `description` -
   (Optional)
   An optional description of this resource.
+
 * `zone` -
   (Optional)
   URL of the zone where the instance group resides.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
 
 ## Attributes Reference
 
 In addition to the arguments listed above, the following computed attributes are exported:
+
 
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
@@ -240,3 +265,6 @@ $ terraform import google_compute_autoscaler.default {{zone}}/{{name}}
 $ terraform import google_compute_autoscaler.default {{project}}/{{zone}}/{{name}}
 $ terraform import google_compute_autoscaler.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

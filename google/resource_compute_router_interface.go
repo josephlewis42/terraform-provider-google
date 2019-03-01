@@ -21,36 +21,36 @@ func resourceComputeRouterInterface() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
-			"router": &schema.Schema{
+			"router": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
-			"vpn_tunnel": &schema.Schema{
+			"vpn_tunnel": {
 				Type:             schema.TypeString,
 				Required:         true,
 				ForceNew:         true,
 				DiffSuppressFunc: linkDiffSuppress,
 			},
 
-			"ip_range": &schema.Schema{
+			"ip_range": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 			},
-			"project": &schema.Schema{
+			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
 			},
 
-			"region": &schema.Schema{
+			"region": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
@@ -238,6 +238,10 @@ func resourceComputeRouterInterfaceDelete(d *schema.ResourceData, meta interface
 		"[INFO] Removing interface %s from router %s/%s", ifaceName, region, routerName)
 	patchRouter := &compute.Router{
 		Interfaces: newIfaces,
+	}
+
+	if len(newIfaces) == 0 {
+		patchRouter.ForceSendFields = append(patchRouter.ForceSendFields, "Interfaces")
 	}
 
 	log.Printf("[DEBUG] Updating router %s/%s with interfaces: %+v", region, routerName, newIfaces)

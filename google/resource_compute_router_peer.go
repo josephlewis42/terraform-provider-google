@@ -21,53 +21,53 @@ func resourceComputeRouterPeer() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
-			"router": &schema.Schema{
+			"router": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
-			"interface": &schema.Schema{
+			"interface": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"peer_ip_address": &schema.Schema{
+			"peer_ip_address": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"peer_asn": &schema.Schema{
+			"peer_asn": {
 				Type:     schema.TypeInt,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"advertised_route_priority": &schema.Schema{
+			"advertised_route_priority": {
 				Type:     schema.TypeInt,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"ip_address": &schema.Schema{
+			"ip_address": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"project": &schema.Schema{
+			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
 			},
 
-			"region": &schema.Schema{
+			"region": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
@@ -259,6 +259,10 @@ func resourceComputeRouterPeerDelete(d *schema.ResourceData, meta interface{}) e
 		"[INFO] Removing peer %s from router %s/%s", peerName, region, routerName)
 	patchRouter := &compute.Router{
 		BgpPeers: newPeers,
+	}
+
+	if len(newPeers) == 0 {
+		patchRouter.ForceSendFields = append(patchRouter.ForceSendFields, "BgpPeers")
 	}
 
 	log.Printf("[DEBUG] Updating router %s/%s with peers: %+v", region, routerName, newPeers)

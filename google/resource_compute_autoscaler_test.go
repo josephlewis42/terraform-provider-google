@@ -11,38 +11,6 @@ import (
 	"google.golang.org/api/compute/v1"
 )
 
-func TestAccComputeAutoscaler_basic(t *testing.T) {
-	t.Parallel()
-
-	var ascaler compute.Autoscaler
-
-	var it_name = fmt.Sprintf("autoscaler-test-%s", acctest.RandString(10))
-	var tp_name = fmt.Sprintf("autoscaler-test-%s", acctest.RandString(10))
-	var igm_name = fmt.Sprintf("autoscaler-test-%s", acctest.RandString(10))
-	var autoscaler_name = fmt.Sprintf("autoscaler-test-%s", acctest.RandString(10))
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckComputeAutoscalerDestroy,
-		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: testAccComputeAutoscaler_basic(it_name, tp_name, igm_name, autoscaler_name),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeAutoscalerExists(
-						"google_compute_autoscaler.foobar", &ascaler),
-				),
-			},
-
-			resource.TestStep{
-				ResourceName:      "google_compute_autoscaler.foobar",
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
-	})
-}
-
 func TestAccComputeAutoscaler_update(t *testing.T) {
 	t.Parallel()
 
@@ -58,14 +26,14 @@ func TestAccComputeAutoscaler_update(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeAutoscalerDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccComputeAutoscaler_basic(it_name, tp_name, igm_name, autoscaler_name),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeAutoscalerExists(
 						"google_compute_autoscaler.foobar", &ascaler),
 				),
 			},
-			resource.TestStep{
+			{
 				Config: testAccComputeAutoscaler_update(it_name, tp_name, igm_name, autoscaler_name),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeAutoscalerExists(
@@ -91,37 +59,17 @@ func TestAccComputeAutoscaler_multicondition(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeAutoscalerDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccComputeAutoscaler_multicondition(it_name, tp_name, igm_name, autoscaler_name),
 				Check:  testAccCheckComputeAutoscalerMultifunction("google_compute_autoscaler.foobar"),
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_compute_autoscaler.foobar",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
 		},
 	})
-}
-
-func testAccCheckComputeAutoscalerDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "google_compute_autoscaler" {
-			continue
-		}
-
-		idParts := strings.Split(rs.Primary.ID, "/")
-		zone, name := idParts[0], idParts[1]
-		_, err := config.clientCompute.Autoscalers.Get(
-			config.Project, zone, name).Do()
-		if err == nil {
-			return fmt.Errorf("Autoscaler still exists")
-		}
-	}
-
-	return nil
 }
 
 func testAccCheckComputeAutoscalerExists(n string, ascaler *compute.Autoscaler) resource.TestCheckFunc {
@@ -221,6 +169,11 @@ func testAccCheckComputeAutoscalerUpdated(n string, max int64) resource.TestChec
 
 func testAccComputeAutoscaler_scaffolding(it_name, tp_name, igm_name string) string {
 	return fmt.Sprintf(`
+data "google_compute_image" "my_image" {
+	family  = "debian-9"
+	project = "debian-cloud"
+}
+
 resource "google_compute_instance_template" "foobar" {
 	name = "%s"
 	machine_type = "n1-standard-1"
@@ -228,17 +181,13 @@ resource "google_compute_instance_template" "foobar" {
 	tags = ["foo", "bar"]
 
 	disk {
-		source_image = "debian-cloud/debian-8-jessie-v20160803"
+		source_image = "${data.google_compute_image.my_image.self_link}"
 		auto_delete = true
 		boot = true
 	}
 
 	network_interface {
 		network = "default"
-	}
-
-	metadata {
-		foo = "bar"
 	}
 
 	service_account {
@@ -271,11 +220,11 @@ resource "google_compute_autoscaler" "foobar" {
 	name = "%s"
 	zone = "us-central1-a"
 	target = "${google_compute_instance_group_manager.foobar.self_link}"
-	autoscaling_policy = {
+	autoscaling_policy {
 		max_replicas = 5
 		min_replicas = 1
 		cooldown_period = 60
-		cpu_utilization = {
+		cpu_utilization {
 			target = 0.5
 		}
 	}
@@ -291,11 +240,11 @@ resource "google_compute_autoscaler" "foobar" {
 	name = "%s"
 	zone = "us-central1-a"
 	target = "${google_compute_instance_group_manager.foobar.self_link}"
-	autoscaling_policy = {
+	autoscaling_policy {
 		max_replicas = 10
 		min_replicas = 1
 		cooldown_period = 60
-		cpu_utilization = {
+		cpu_utilization {
 			target = 0.5
 		}
 	}
@@ -311,14 +260,14 @@ resource "google_compute_autoscaler" "foobar" {
 	name = "%s"
 	zone = "us-central1-a"
 	target = "${google_compute_instance_group_manager.foobar.self_link}"
-	autoscaling_policy = {
+	autoscaling_policy {
 		max_replicas = 10
 		min_replicas = 1
 		cooldown_period = 60
-		cpu_utilization = {
+		cpu_utilization {
 			target = 0.5
 		}
-		load_balancing_utilization = {
+		load_balancing_utilization {
 			target = 0.5
 		}
 		metric {

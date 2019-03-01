@@ -29,7 +29,7 @@ resource "google_dns_record_set" "frontend" {
 
   managed_zone = "${google_dns_managed_zone.prod.name}"
 
-  rrdatas = ["${google_compute_instance.frontend.network_interface.0.access_config.0.assigned_nat_ip}"]
+  rrdatas = ["${google_compute_instance.frontend.network_interface.0.access_config.0.nat_ip}"]
 }
 
 resource "google_compute_instance" "frontend" {
@@ -39,7 +39,7 @@ resource "google_compute_instance" "frontend" {
 
   boot_disk {
     initialize_params {
-      image = "debian-cloud/debian-8"
+      image = "debian-cloud/debian-9"
     }
   }
 
@@ -114,6 +114,23 @@ resource "google_dns_record_set" "spf" {
 resource "google_dns_managed_zone" "prod" {
   name     = "prod-zone"
   dns_name = "prod.mydomain.com."
+}
+```
+
+### Adding a CNAME record
+ The list of `rrdatas` should only contain a single string corresponding to the Canonical Name intended.
+ ```hcl
+resource "google_dns_record_set" "cname" {
+  name = "frontend.${google_dns_managed_zone.prod.dns_name}"
+  managed_zone = "${google_dns_managed_zone.prod.name}"
+  type = "CNAME"
+  ttl  = 300
+  rrdatas = ["frontend.mydomain.com."]
+}
+
+resource "google_dns_managed_zone" "prod" {
+  name        = "prod-zone"
+  dns_name    = "prod.mydomain.com."
 }
 ```
 

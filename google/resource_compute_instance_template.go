@@ -3,6 +3,7 @@ package google
 import (
 	"fmt"
 
+	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/helper/validation"
@@ -19,13 +20,14 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 			State: schema.ImportStatePassthrough,
 		},
 		SchemaVersion: 1,
+		CustomizeDiff: resourceComputeInstanceTemplateSourceImageCustomizeDiff,
 		MigrateState:  resourceComputeInstanceTemplateMigrateState,
 
 		// A compute instance template is more or less a subset of a compute
 		// instance. Please attempt to maintain consistency with the
 		// resource_compute_instance schema when updating this one.
 		Schema: map[string]*schema.Schema{
-			"name": &schema.Schema{
+			"name": {
 				Type:          schema.TypeString,
 				Optional:      true,
 				Computed:      true,
@@ -34,7 +36,7 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 				ValidateFunc:  validateGCPName,
 			},
 
-			"name_prefix": &schema.Schema{
+			"name_prefix": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
@@ -51,144 +53,161 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 				},
 			},
 
-			"disk": &schema.Schema{
+			"disk": {
 				Type:     schema.TypeList,
 				Required: true,
 				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"auto_delete": &schema.Schema{
+						"auto_delete": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Default:  true,
 							ForceNew: true,
 						},
 
-						"boot": &schema.Schema{
+						"boot": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							ForceNew: true,
 							Computed: true,
 						},
 
-						"device_name": &schema.Schema{
+						"device_name": {
 							Type:     schema.TypeString,
 							Optional: true,
 							Computed: true,
 							ForceNew: true,
 						},
 
-						"disk_name": &schema.Schema{
+						"disk_name": {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
 						},
 
-						"disk_size_gb": &schema.Schema{
+						"disk_size_gb": {
 							Type:     schema.TypeInt,
 							Optional: true,
 							ForceNew: true,
 						},
 
-						"disk_type": &schema.Schema{
+						"disk_type": {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
 							Computed: true,
 						},
 
-						"source_image": &schema.Schema{
+						"source_image": {
 							Type:     schema.TypeString,
 							Optional: true,
-							ForceNew: true,
+							Computed: true,
 						},
 
-						"interface": &schema.Schema{
+						"interface": {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
 							Computed: true,
 						},
 
-						"mode": &schema.Schema{
+						"mode": {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
 							Computed: true,
 						},
 
-						"source": &schema.Schema{
+						"source": {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
 						},
 
-						"type": &schema.Schema{
+						"type": {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
 							Computed: true,
+						},
+
+						"disk_encryption_key": {
+							Type:     schema.TypeList,
+							Optional: true,
+							ForceNew: true,
+							MaxItems: 1,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"kms_key_self_link": {
+										Type:             schema.TypeString,
+										Optional:         true,
+										ForceNew:         true,
+										DiffSuppressFunc: compareSelfLinkRelativePaths,
+									},
+								},
+							},
 						},
 					},
 				},
 			},
 
-			"machine_type": &schema.Schema{
+			"machine_type": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
 
-			"automatic_restart": &schema.Schema{
+			"automatic_restart": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				ForceNew: true,
 				Removed:  "Use 'scheduling.automatic_restart' instead.",
 			},
 
-			"can_ip_forward": &schema.Schema{
+			"can_ip_forward": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
 				ForceNew: true,
 			},
 
-			"description": &schema.Schema{
+			"description": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"instance_description": &schema.Schema{
+			"instance_description": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"metadata": &schema.Schema{
+			"metadata": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"metadata_startup_script": &schema.Schema{
+			"metadata_startup_script": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"metadata_fingerprint": &schema.Schema{
+			"metadata_fingerprint": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"network_interface": &schema.Schema{
+			"network_interface": {
 				Type:     schema.TypeList,
 				Optional: true,
 				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"network": &schema.Schema{
+						"network": {
 							Type:             schema.TypeString,
 							Optional:         true,
 							ForceNew:         true,
@@ -196,22 +215,13 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 							DiffSuppressFunc: compareSelfLinkOrResourceName,
 						},
 
-						"address": &schema.Schema{
+						"network_ip": {
 							Type:     schema.TypeString,
-							Computed: true, // Computed because it is set if network_ip is set.
 							Optional: true,
 							ForceNew: true,
 						},
 
-						"network_ip": &schema.Schema{
-							Type:       schema.TypeString,
-							Computed:   true, // Computed because it is set if address is set.
-							Optional:   true,
-							ForceNew:   true,
-							Deprecated: "Please use address",
-						},
-
-						"subnetwork": &schema.Schema{
+						"subnetwork": {
 							Type:             schema.TypeString,
 							Optional:         true,
 							ForceNew:         true,
@@ -219,56 +229,53 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 							DiffSuppressFunc: compareSelfLinkOrResourceName,
 						},
 
-						"subnetwork_project": &schema.Schema{
+						"subnetwork_project": {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
 							Computed: true,
 						},
 
-						"access_config": &schema.Schema{
+						"access_config": {
 							Type:     schema.TypeList,
 							Optional: true,
 							ForceNew: true,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"nat_ip": &schema.Schema{
+									"nat_ip": {
 										Type:     schema.TypeString,
 										Optional: true,
 										ForceNew: true,
 										Computed: true,
 									},
-									"network_tier": &schema.Schema{
+									"network_tier": {
 										Type:         schema.TypeString,
 										Optional:     true,
 										Computed:     true,
 										ValidateFunc: validation.StringInSlice([]string{"PREMIUM", "STANDARD"}, false),
 									},
-									// Instance templates will never have an
-									// 'assigned NAT IP', but we need this in
-									// the schema to allow us to share flatten
-									// code with an instance, which could.
-									"assigned_nat_ip": &schema.Schema{
+									"assigned_nat_ip": {
 										Type:     schema.TypeString,
 										Computed: true,
+										Removed:  "Use network_interface.access_config.nat_ip instead.",
 									},
 								},
 							},
 						},
 
-						"alias_ip_range": &schema.Schema{
+						"alias_ip_range": {
 							Type:     schema.TypeList,
 							Optional: true,
 							ForceNew: true,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
-									"ip_cidr_range": &schema.Schema{
+									"ip_cidr_range": {
 										Type:             schema.TypeString,
 										Required:         true,
 										ForceNew:         true,
 										DiffSuppressFunc: ipCidrRangeDiffSuppress,
 									},
-									"subnetwork_range_name": &schema.Schema{
+									"subnetwork_range_name": {
 										Type:     schema.TypeString,
 										Optional: true,
 										ForceNew: true,
@@ -276,53 +283,60 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 								},
 							},
 						},
+
+						"address": {
+							Type:     schema.TypeString,
+							Computed: true,
+							Optional: true,
+							Removed:  "Please use network_ip",
+						},
 					},
 				},
 			},
 
-			"on_host_maintenance": &schema.Schema{
+			"on_host_maintenance": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 				Removed:  "Use 'scheduling.on_host_maintenance' instead.",
 			},
 
-			"project": &schema.Schema{
+			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 				Computed: true,
 			},
 
-			"region": &schema.Schema{
+			"region": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 				Computed: true,
 			},
 
-			"scheduling": &schema.Schema{
+			"scheduling": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"preemptible": &schema.Schema{
+						"preemptible": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Default:  false,
 							ForceNew: true,
 						},
 
-						"automatic_restart": &schema.Schema{
+						"automatic_restart": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Default:  true,
 							ForceNew: true,
 						},
 
-						"on_host_maintenance": &schema.Schema{
+						"on_host_maintenance": {
 							Type:     schema.TypeString,
 							Optional: true,
 							Computed: true,
@@ -332,26 +346,26 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 				},
 			},
 
-			"self_link": &schema.Schema{
+			"self_link": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"service_account": &schema.Schema{
+			"service_account": {
 				Type:     schema.TypeList,
 				MaxItems: 1,
 				Optional: true,
 				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"email": &schema.Schema{
+						"email": {
 							Type:     schema.TypeString,
 							Optional: true,
 							Computed: true,
 							ForceNew: true,
 						},
 
-						"scopes": &schema.Schema{
+						"scopes": {
 							Type:     schema.TypeSet,
 							Required: true,
 							ForceNew: true,
@@ -367,18 +381,18 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 				},
 			},
 
-			"guest_accelerator": &schema.Schema{
+			"guest_accelerator": {
 				Type:     schema.TypeList,
 				Optional: true,
 				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"count": &schema.Schema{
+						"count": {
 							Type:     schema.TypeInt,
 							Required: true,
 							ForceNew: true,
 						},
-						"type": &schema.Schema{
+						"type": {
 							Type:             schema.TypeString,
 							Required:         true,
 							ForceNew:         true,
@@ -388,13 +402,13 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 				},
 			},
 
-			"min_cpu_platform": &schema.Schema{
+			"min_cpu_platform": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 			},
 
-			"tags": &schema.Schema{
+			"tags": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				ForceNew: true,
@@ -402,12 +416,12 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 				Set:      schema.HashString,
 			},
 
-			"tags_fingerprint": &schema.Schema{
+			"tags_fingerprint": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
 
-			"labels": &schema.Schema{
+			"labels": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				ForceNew: true,
@@ -416,6 +430,57 @@ func resourceComputeInstanceTemplate() *schema.Resource {
 			},
 		},
 	}
+}
+
+func resourceComputeInstanceTemplateSourceImageCustomizeDiff(diff *schema.ResourceDiff, meta interface{}) error {
+	config := meta.(*Config)
+	project, err := getProjectFromDiff(diff, config)
+	if err != nil {
+		return err
+	}
+	numDisks := diff.Get("disk.#").(int)
+	for i := 0; i < numDisks; i++ {
+		key := fmt.Sprintf("disk.%d.source_image", i)
+		if diff.HasChange(key) {
+			old, new := diff.GetChange(key)
+			if old == "" || new == "" {
+				// no sense in resolving empty strings
+				err = diff.ForceNew(key)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			oldResolved, err := resolveImage(config, project, old.(string))
+			if err != nil {
+				return err
+			}
+			oldResolved, err = resolvedImageSelfLink(project, oldResolved)
+			if err != nil {
+				return err
+			}
+			newResolved, err := resolveImage(config, project, new.(string))
+			if err != nil {
+				return err
+			}
+			newResolved, err = resolvedImageSelfLink(project, newResolved)
+			if err != nil {
+				return err
+			}
+			if oldResolved != newResolved {
+				err = diff.ForceNew(key)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			err = diff.Clear(key)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func buildDisks(d *schema.ResourceData, config *Config) ([]*computeBeta.AttachedDisk, error) {
@@ -444,6 +509,13 @@ func buildDisks(d *schema.ResourceData, config *Config) ([]*computeBeta.Attached
 
 		if v, ok := d.GetOk(prefix + ".device_name"); ok {
 			disk.DeviceName = v.(string)
+		}
+
+		if _, ok := d.GetOk(prefix + ".disk_encryption_key"); ok {
+			disk.DiskEncryptionKey = &computeBeta.CustomerEncryptionKey{}
+			if v, ok := d.GetOk(prefix + ".disk_encryption_key.0.kms_key_self_link"); ok {
+				disk.DiskEncryptionKey.KmsKeyName = v.(string)
+			}
 		}
 
 		if v, ok := d.GetOk(prefix + ".source"); ok {
@@ -630,31 +702,46 @@ func resourceComputeInstanceTemplateCreate(d *schema.ResourceData, meta interfac
 	return resourceComputeInstanceTemplateRead(d, meta)
 }
 
-func flattenDisks(disks []*computeBeta.AttachedDisk, d *schema.ResourceData) []map[string]interface{} {
+func flattenDisks(disks []*computeBeta.AttachedDisk, d *schema.ResourceData, defaultProject string) ([]map[string]interface{}, error) {
 	result := make([]map[string]interface{}, 0, len(disks))
-	for i, disk := range disks {
+	for _, disk := range disks {
 		diskMap := make(map[string]interface{})
 		if disk.InitializeParams != nil {
-			var source_img = fmt.Sprintf("disk.%d.source_image", i)
-			if d.Get(source_img) == nil || d.Get(source_img) == "" {
-				diskMap["source_image"] = GetResourceNameFromSelfLink(disk.InitializeParams.SourceImage)
+			if disk.InitializeParams.SourceImage != "" {
+				selfLink, err := resolvedImageSelfLink(defaultProject, disk.InitializeParams.SourceImage)
+				if err != nil {
+					return nil, errwrap.Wrapf("Error expanding source image input to self_link: {{err}}", err)
+				}
+				path, err := getRelativePath(selfLink)
+				if err != nil {
+					return nil, errwrap.Wrapf("Error getting relative path for source image: {{err}}", err)
+				}
+				diskMap["source_image"] = path
 			} else {
-				diskMap["source_image"] = d.Get(source_img)
+				diskMap["source_image"] = ""
 			}
 			diskMap["disk_type"] = disk.InitializeParams.DiskType
 			diskMap["disk_name"] = disk.InitializeParams.DiskName
 			diskMap["disk_size_gb"] = disk.InitializeParams.DiskSizeGb
 		}
+
+		if disk.DiskEncryptionKey != nil {
+			encryption := make([]map[string]interface{}, 1)
+			encryption[0] = make(map[string]interface{})
+			encryption[0]["kms_key_self_link"] = disk.DiskEncryptionKey.KmsKeyName
+			diskMap["disk_encryption_key"] = encryption
+		}
+
 		diskMap["auto_delete"] = disk.AutoDelete
 		diskMap["boot"] = disk.Boot
 		diskMap["device_name"] = disk.DeviceName
 		diskMap["interface"] = disk.Interface
-		diskMap["source"] = disk.Source
+		diskMap["source"] = ConvertSelfLinkToV1(disk.Source)
 		diskMap["mode"] = disk.Mode
 		diskMap["type"] = disk.Type
 		result = append(result, diskMap)
 	}
-	return result
+	return result, nil
 }
 
 func resourceComputeInstanceTemplateRead(d *schema.ResourceData, meta interface{}) error {
@@ -695,6 +782,8 @@ func resourceComputeInstanceTemplateRead(d *schema.ResourceData, meta interface{
 		if err = d.Set("tags_fingerprint", instanceTemplate.Properties.Tags.Fingerprint); err != nil {
 			return fmt.Errorf("Error setting tags_fingerprint: %s", err)
 		}
+	} else {
+		d.Set("tags_fingerprint", "")
 	}
 	if instanceTemplate.Properties.Labels != nil {
 		d.Set("labels", instanceTemplate.Properties.Labels)
@@ -706,7 +795,11 @@ func resourceComputeInstanceTemplateRead(d *schema.ResourceData, meta interface{
 		return fmt.Errorf("Error setting name: %s", err)
 	}
 	if instanceTemplate.Properties.Disks != nil {
-		if err = d.Set("disk", flattenDisks(instanceTemplate.Properties.Disks, d)); err != nil {
+		disks, err := flattenDisks(instanceTemplate.Properties.Disks, d, project)
+		if err != nil {
+			return fmt.Errorf("error flattening disks: %s", err)
+		}
+		if err = d.Set("disk", disks); err != nil {
 			return fmt.Errorf("Error setting disk: %s", err)
 		}
 	}
@@ -754,6 +847,10 @@ func resourceComputeInstanceTemplateRead(d *schema.ResourceData, meta interface{
 	if instanceTemplate.Properties.Tags != nil {
 		if err = d.Set("tags", instanceTemplate.Properties.Tags.Items); err != nil {
 			return fmt.Errorf("Error setting tags: %s", err)
+		}
+	} else {
+		if err = d.Set("tags", nil); err != nil {
+			return fmt.Errorf("Error setting empty tags: %s", err)
 		}
 	}
 	if instanceTemplate.Properties.ServiceAccounts != nil {

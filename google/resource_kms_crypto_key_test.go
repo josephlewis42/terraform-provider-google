@@ -2,7 +2,6 @@ package google
 
 import (
 	"fmt"
-	"log"
 	"testing"
 	"time"
 
@@ -26,6 +25,12 @@ func TestCryptoKeyIdParsing(t *testing.T) {
 			ExpectedError:       false,
 			ExpectedTerraformId: "test-project/us-central1/test-key-ring/test-key-name",
 			ExpectedCryptoKeyId: "projects/test-project/locations/us-central1/keyRings/test-key-ring/cryptoKeys/test-key-name",
+		},
+		"id is in domain:project/location/keyRingName/cryptoKeyName format": {
+			ImportId:            "example.com:test-project/us-central1/test-key-ring/test-key-name",
+			ExpectedError:       false,
+			ExpectedTerraformId: "example.com:test-project/us-central1/test-key-ring/test-key-name",
+			ExpectedCryptoKeyId: "projects/example.com:test-project/locations/us-central1/keyRings/test-key-ring/cryptoKeys/test-key-name",
 		},
 		"id contains name that is longer than 63 characters": {
 			ImportId:      "test-project/us-central1/test-key-ring/can-you-believe-that-this-cryptokey-name-is-this-extravagantly-long",
@@ -118,14 +123,16 @@ func TestAccKmsCryptoKey_basic(t *testing.T) {
 		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleKmsCryptoKey_basic(projectId, projectOrg, projectBillingAccount, keyRingName, cryptoKeyName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckGoogleKmsCryptoKeyExists("google_kms_crypto_key.crypto_key"),
-				),
+			},
+			{
+				ResourceName:      "google_kms_crypto_key.crypto_key",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 			// Use a separate TestStep rather than a CheckDestroy because we need the project to still exist.
-			resource.TestStep{
+			{
 				Config: testGoogleKmsCryptoKey_removed(projectId, projectOrg, projectBillingAccount, keyRingName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleKmsCryptoKeyWasRemovedFromState("google_kms_crypto_key.crypto_key"),
@@ -152,29 +159,32 @@ func TestAccKmsCryptoKey_rotation(t *testing.T) {
 		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleKmsCryptoKey_rotation(projectId, projectOrg, projectBillingAccount, keyRingName, cryptoKeyName, rotationPeriod),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckGoogleKmsCryptoKeyExists("google_kms_crypto_key.crypto_key"),
-					testAccCheckGoogleKmsCryptoKeyHasRotationParams(rotationPeriod, "google_kms_crypto_key.crypto_key"),
-				),
 			},
-			resource.TestStep{
+			{
+				ResourceName:      "google_kms_crypto_key.crypto_key",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
 				Config: testGoogleKmsCryptoKey_rotation(projectId, projectOrg, projectBillingAccount, keyRingName, cryptoKeyName, updatedRotationPeriod),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckGoogleKmsCryptoKeyExists("google_kms_crypto_key.crypto_key"),
-					testAccCheckGoogleKmsCryptoKeyHasRotationParams(updatedRotationPeriod, "google_kms_crypto_key.crypto_key"),
-				),
 			},
-			resource.TestStep{
+			{
+				ResourceName:      "google_kms_crypto_key.crypto_key",
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
 				Config: testGoogleKmsCryptoKey_rotationRemoved(projectId, projectOrg, projectBillingAccount, keyRingName, cryptoKeyName),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckGoogleKmsCryptoKeyExists("google_kms_crypto_key.crypto_key"),
-					testAccCheckGoogleKmsCryptoKeyHasRotationParams("", "google_kms_crypto_key.crypto_key"),
-				),
+			},
+			{
+				ResourceName:      "google_kms_crypto_key.crypto_key",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 			// Use a separate TestStep rather than a CheckDestroy because we need the project to still exist.
-			resource.TestStep{
+			{
 				Config: testGoogleKmsCryptoKey_removed(projectId, projectOrg, projectBillingAccount, keyRingName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleKmsCryptoKeyWasRemovedFromState("google_kms_crypto_key.crypto_key"),
@@ -183,87 +193,6 @@ func TestAccKmsCryptoKey_rotation(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccCheckGoogleKmsCryptoKeyExists(resourceName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		config := testAccProvider.Meta().(*Config)
-
-		rs, ok := s.RootModule().Resources[resourceName]
-		if !ok {
-			return fmt.Errorf("Resource not found: %s", resourceName)
-		}
-
-		keyRingId, err := parseKmsKeyRingId(rs.Primary.Attributes["key_ring"], config)
-
-		if err != nil {
-			return err
-		}
-
-		cryptoKeyId := &kmsCryptoKeyId{
-			KeyRingId: *keyRingId,
-			Name:      rs.Primary.Attributes["name"],
-		}
-
-		listCryptoKeysResponse, err := config.clientKms.Projects.Locations.KeyRings.CryptoKeys.List(cryptoKeyId.parentId()).Do()
-		if err != nil {
-			return fmt.Errorf("Error listing KeyRings: %s", err)
-		}
-
-		for _, cryptoKey := range listCryptoKeysResponse.CryptoKeys {
-			log.Printf("[DEBUG] Found CryptoKey: %s", cryptoKey.Name)
-
-			if cryptoKey.Name == cryptoKeyId.cryptoKeyId() {
-				return nil
-			}
-		}
-
-		return fmt.Errorf("CryptoKey not found: %s", cryptoKeyId.cryptoKeyId())
-	}
-}
-
-func testAccCheckGoogleKmsCryptoKeyHasRotationParams(rotationPeriod, resourceName string) resource.TestCheckFunc {
-	return func(s *terraform.State) error {
-		config := testAccProvider.Meta().(*Config)
-
-		rs, ok := s.RootModule().Resources[resourceName]
-		if !ok {
-			return fmt.Errorf("Resource not found: %s", resourceName)
-		}
-
-		keyRingId, err := parseKmsKeyRingId(rs.Primary.Attributes["key_ring"], config)
-
-		if err != nil {
-			return err
-		}
-
-		cryptoKeyId := &kmsCryptoKeyId{
-			KeyRingId: *keyRingId,
-			Name:      rs.Primary.Attributes["name"],
-		}
-
-		getCryptoKeyResponse, err := config.clientKms.Projects.Locations.KeyRings.CryptoKeys.Get(cryptoKeyId.cryptoKeyId()).Do()
-
-		if err != nil {
-			return err
-		}
-
-		if rotationPeriod != getCryptoKeyResponse.RotationPeriod {
-			return fmt.Errorf("Expected rotation period %s to match input %s", getCryptoKeyResponse.RotationPeriod, rotationPeriod)
-		}
-
-		if getCryptoKeyResponse.NextRotationTime == "" {
-			return nil
-		}
-
-		_, err = time.Parse(time.RFC3339Nano, getCryptoKeyResponse.NextRotationTime)
-
-		if err != nil {
-			return fmt.Errorf("Failed to parse NextRotationTime timestamp: %s", err)
-		}
-
-		return nil
-	}
 }
 
 /*
@@ -339,8 +268,12 @@ resource "google_kms_key_ring" "key_ring" {
 
 resource "google_kms_crypto_key" "crypto_key" {
 	name            = "%s"
-	key_ring        = "${google_kms_key_ring.key_ring.id}"
+	key_ring        = "${google_kms_key_ring.key_ring.self_link}"
 	rotation_period = "1000000s"
+	version_template {
+		algorithm =        "GOOGLE_SYMMETRIC_ENCRYPTION"
+		protection_level = "SOFTWARE"
+	}
 }
 	`, projectId, projectId, projectOrg, projectBillingAccount, keyRingName, cryptoKeyName)
 }
@@ -370,7 +303,7 @@ resource "google_kms_key_ring" "key_ring" {
 
 resource "google_kms_crypto_key" "crypto_key" {
 	name            = "%s"
-	key_ring        = "${google_kms_key_ring.key_ring.id}"
+	key_ring        = "${google_kms_key_ring.key_ring.self_link}"
 	rotation_period = "%s"
 }
 	`, projectId, projectId, projectOrg, projectBillingAccount, keyRingName, cryptoKeyName, rotationPeriod)
@@ -401,7 +334,7 @@ resource "google_kms_key_ring" "key_ring" {
 
 resource "google_kms_crypto_key" "crypto_key" {
 	name            = "%s"
-	key_ring        = "${google_kms_key_ring.key_ring.id}"
+	key_ring        = "${google_kms_key_ring.key_ring.self_link}"
 }
 	`, projectId, projectId, projectOrg, projectBillingAccount, keyRingName, cryptoKeyName)
 }

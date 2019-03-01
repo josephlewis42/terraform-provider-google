@@ -9,7 +9,6 @@ import (
 
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
-	//"google.golang.org/api/storage/v1"
 )
 
 var tfObjectAcl, errObjectAcl = ioutil.TempFile("", "tf-gce-test")
@@ -25,7 +24,9 @@ func TestAccStorageObjectAcl_basic(t *testing.T) {
 	bucketName := testBucketName()
 	objectName := testAclObjectName()
 	objectData := []byte("data data data")
-	ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644)
+	if err := ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644); err != nil {
+		t.Errorf("error writing file: %v", err)
+	}
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			if errObjectAcl != nil {
@@ -36,7 +37,7 @@ func TestAccStorageObjectAcl_basic(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccStorageObjectAclDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclBasic1(bucketName, objectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleStorageObjectAcl(bucketName,
@@ -55,7 +56,9 @@ func TestAccStorageObjectAcl_upgrade(t *testing.T) {
 	bucketName := testBucketName()
 	objectName := testAclObjectName()
 	objectData := []byte("data data data")
-	ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644)
+	if err := ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644); err != nil {
+		t.Errorf("error writing file: %v", err)
+	}
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			if errObjectAcl != nil {
@@ -66,7 +69,7 @@ func TestAccStorageObjectAcl_upgrade(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccStorageObjectAclDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclBasic1(bucketName, objectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleStorageObjectAcl(bucketName,
@@ -76,7 +79,7 @@ func TestAccStorageObjectAcl_upgrade(t *testing.T) {
 				),
 			},
 
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclBasic2(bucketName, objectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleStorageObjectAcl(bucketName,
@@ -86,7 +89,7 @@ func TestAccStorageObjectAcl_upgrade(t *testing.T) {
 				),
 			},
 
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclBasicDelete(bucketName, objectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleStorageObjectAclDelete(bucketName,
@@ -107,7 +110,9 @@ func TestAccStorageObjectAcl_downgrade(t *testing.T) {
 	bucketName := testBucketName()
 	objectName := testAclObjectName()
 	objectData := []byte("data data data")
-	ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644)
+	if err := ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644); err != nil {
+		t.Errorf("error writing file: %v", err)
+	}
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			if errObjectAcl != nil {
@@ -118,7 +123,7 @@ func TestAccStorageObjectAcl_downgrade(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccStorageObjectAclDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclBasic2(bucketName, objectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleStorageObjectAcl(bucketName,
@@ -128,7 +133,7 @@ func TestAccStorageObjectAcl_downgrade(t *testing.T) {
 				),
 			},
 
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclBasic3(bucketName, objectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleStorageObjectAcl(bucketName,
@@ -138,7 +143,7 @@ func TestAccStorageObjectAcl_downgrade(t *testing.T) {
 				),
 			},
 
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclBasicDelete(bucketName, objectName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckGoogleStorageObjectAclDelete(bucketName,
@@ -159,7 +164,9 @@ func TestAccStorageObjectAcl_predefined(t *testing.T) {
 	bucketName := testBucketName()
 	objectName := testAclObjectName()
 	objectData := []byte("data data data")
-	ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644)
+	if err := ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644); err != nil {
+		t.Errorf("error writing file: %v", err)
+	}
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			if errObjectAcl != nil {
@@ -170,8 +177,105 @@ func TestAccStorageObjectAcl_predefined(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccStorageObjectAclDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleStorageObjectsAclPredefined(bucketName, objectName),
+			},
+		},
+	})
+}
+
+func TestAccStorageObjectAcl_predefinedToExplicit(t *testing.T) {
+	t.Parallel()
+
+	bucketName := testBucketName()
+	objectName := testAclObjectName()
+	objectData := []byte("data data data")
+	if err := ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644); err != nil {
+		t.Errorf("error writing file: %v", err)
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			if errObjectAcl != nil {
+				panic(errObjectAcl)
+			}
+			testAccPreCheck(t)
+		},
+		Providers:    testAccProviders,
+		CheckDestroy: testAccStorageObjectAclDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testGoogleStorageObjectsAclPredefined(bucketName, objectName),
+			},
+			{
+				Config: testGoogleStorageObjectsAclBasic1(bucketName, objectName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckGoogleStorageObjectAcl(bucketName,
+						objectName, roleEntityBasic1),
+					testAccCheckGoogleStorageObjectAcl(bucketName,
+						objectName, roleEntityBasic2),
+				),
+			},
+		},
+	})
+}
+
+func TestAccStorageObjectAcl_explicitToPredefined(t *testing.T) {
+	t.Parallel()
+
+	bucketName := testBucketName()
+	objectName := testAclObjectName()
+	objectData := []byte("data data data")
+	if err := ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644); err != nil {
+		t.Errorf("error writing file: %v", err)
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			if errObjectAcl != nil {
+				panic(errObjectAcl)
+			}
+			testAccPreCheck(t)
+		},
+		Providers:    testAccProviders,
+		CheckDestroy: testAccStorageObjectAclDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testGoogleStorageObjectsAclBasic1(bucketName, objectName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckGoogleStorageObjectAcl(bucketName,
+						objectName, roleEntityBasic1),
+					testAccCheckGoogleStorageObjectAcl(bucketName,
+						objectName, roleEntityBasic2),
+				),
+			},
+			{
+				Config: testGoogleStorageObjectsAclPredefined(bucketName, objectName),
+			},
+		},
+	})
+}
+
+// Test that we allow the API to reorder our role entities without perma-diffing.
+func TestAccStorageObjectAcl_unordered(t *testing.T) {
+	t.Parallel()
+
+	bucketName := testBucketName()
+	objectName := testAclObjectName()
+	objectData := []byte("data data data")
+	if err := ioutil.WriteFile(tfObjectAcl.Name(), objectData, 0644); err != nil {
+		t.Errorf("error writing file: %v", err)
+	}
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			if errObjectAcl != nil {
+				panic(errObjectAcl)
+			}
+			testAccPreCheck(t)
+		},
+		Providers:    testAccProviders,
+		CheckDestroy: testAccStorageObjectAclDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testGoogleStorageObjectAclUnordered(bucketName, objectName),
 			},
 		},
 	})
@@ -335,4 +439,24 @@ resource "google_storage_object_acl" "acl" {
 	predefined_acl = "projectPrivate"
 }
 `, bucketName, objectName, tfObjectAcl.Name())
+}
+
+func testGoogleStorageObjectAclUnordered(bucketName, objectName string) string {
+	return fmt.Sprintf(`
+resource "google_storage_bucket" "bucket" {
+	name = "%s"
+}
+
+resource "google_storage_bucket_object" "object" {
+	name = "%s"
+	bucket = "${google_storage_bucket.bucket.name}"
+	source = "%s"
+}
+
+resource "google_storage_object_acl" "acl" {
+	object = "${google_storage_bucket_object.object.name}"
+	bucket = "${google_storage_bucket.bucket.name}"
+	role_entity = ["%s", "%s", "%s", "%s", "%s"]
+}
+`, bucketName, objectName, tfObjectAcl.Name(), roleEntityBasic1, roleEntityViewers, roleEntityOwners, roleEntityBasic2, roleEntityEditors)
 }

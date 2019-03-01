@@ -31,6 +31,10 @@ func TestAccLoggingOrganizationSink_basic(t *testing.T) {
 					testAccCheckLoggingOrganizationSinkExists("google_logging_organization_sink.basic", &sink),
 					testAccCheckLoggingOrganizationSink(&sink, "google_logging_organization_sink.basic"),
 				),
+			}, {
+				ResourceName:      "google_logging_organization_sink.basic",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 		},
 	})
@@ -63,6 +67,10 @@ func TestAccLoggingOrganizationSink_update(t *testing.T) {
 					testAccCheckLoggingOrganizationSinkExists("google_logging_organization_sink.update", &sinkAfter),
 					testAccCheckLoggingOrganizationSink(&sinkAfter, "google_logging_organization_sink.update"),
 				),
+			}, {
+				ResourceName:      "google_logging_organization_sink.update",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 		},
 	})
@@ -97,6 +105,10 @@ func TestAccLoggingOrganizationSink_heredoc(t *testing.T) {
 					testAccCheckLoggingOrganizationSinkExists("google_logging_organization_sink.heredoc", &sink),
 					testAccCheckLoggingOrganizationSink(&sink, "google_logging_organization_sink.heredoc"),
 				),
+			}, {
+				ResourceName:      "google_logging_organization_sink.heredoc",
+				ImportState:       true,
+				ImportStateVerify: true,
 			},
 		},
 	})
@@ -195,7 +207,6 @@ resource "google_logging_organization_sink" "update" {
 	org_id           = "%s"
 	destination      = "storage.googleapis.com/${google_storage_bucket.log-bucket.name}"
 	filter           = "logName=\"projects/%s/logs/compute.googleapis.com%%2Factivity_log\" AND severity>=ERROR"
-	destination = "storage.googleapis.com/${google_storage_bucket.log-bucket.name}"
 	include_children = false
 }
 

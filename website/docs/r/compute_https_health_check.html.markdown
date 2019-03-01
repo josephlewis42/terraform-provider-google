@@ -31,17 +31,24 @@ should be preferred for all uses except
 [Network Load Balancers](https://cloud.google.com/compute/docs/load-balancing/network/)
 which still require the legacy version.
 
+
 To get more information about HttpsHealthCheck, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/latest/httpsHealthChecks)
 * How-to Guides
     * [Adding Health Checks](https://cloud.google.com/compute/docs/load-balancing/health-checks#legacy_health_checks)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=https_health_check_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Https Health Check Basic
+
 
 ```hcl
 resource "google_compute_https_health_check" "default" {
-  name         = "test"
+  name         = "authentication-health-check"
   request_path = "/health_check"
 
   timeout_sec        = 1
@@ -52,6 +59,7 @@ resource "google_compute_https_health_check" "default" {
 ## Argument Reference
 
 The following arguments are supported:
+
 
 * `name` -
   (Required)
@@ -66,47 +74,56 @@ The following arguments are supported:
 
 - - -
 
+
 * `check_interval_sec` -
   (Optional)
   How often (in seconds) to send a health check. The default value is 5
   seconds.
+
 * `description` -
   (Optional)
   An optional description of this resource. Provide this property when
   you create the resource.
+
 * `healthy_threshold` -
   (Optional)
   A so-far unhealthy instance will be marked healthy after this many
   consecutive successes. The default value is 2.
+
 * `host` -
   (Optional)
   The value of the host header in the HTTPS health check request. If
   left empty (default value), the public IP on behalf of which this
   health check is performed will be used.
+
 * `port` -
   (Optional)
   The TCP port number for the HTTPS health check request.
   The default value is 80.
+
 * `request_path` -
   (Optional)
   The request path of the HTTPS health check request.
   The default value is /.
+
 * `timeout_sec` -
   (Optional)
   How long (in seconds) to wait before claiming failure.
   The default value is 5 seconds.  It is invalid for timeoutSec to have
   greater value than checkIntervalSec.
+
 * `unhealthy_threshold` -
   (Optional)
   A so-far healthy instance will be marked unhealthy after this many
   consecutive failures. The default value is 2.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
 
 ## Attributes Reference
 
 In addition to the arguments listed above, the following computed attributes are exported:
+
 
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
@@ -131,3 +148,6 @@ $ terraform import google_compute_https_health_check.default projects/{{project}
 $ terraform import google_compute_https_health_check.default {{project}}/{{name}}
 $ terraform import google_compute_https_health_check.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

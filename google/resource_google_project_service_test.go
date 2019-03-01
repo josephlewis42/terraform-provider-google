@@ -2,6 +2,7 @@ package google
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform/helper/acctest"
@@ -20,44 +21,111 @@ func TestAccProjectService_basic(t *testing.T) {
 		PreCheck:  func() { testAccPreCheck(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccProjectService_basic(services, pid, pname, org),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckProjectService(services, pid, true),
 				),
 			},
-			resource.TestStep{
+			{
 				ResourceName:            "google_project_service.test",
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"disable_on_destroy"},
 			},
-			resource.TestStep{
+			{
 				ResourceName:            "google_project_service.test2",
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateVerifyIgnore: []string{"disable_on_destroy"},
 			},
 			// Use a separate TestStep rather than a CheckDestroy because we need the project to still exist.
-			resource.TestStep{
+			{
 				Config: testAccProject_create(pid, pname, org),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckProjectService(services, pid, false),
 				),
 			},
 			// Create services with disabling turned off.
-			resource.TestStep{
+			{
 				Config: testAccProjectService_noDisable(services, pid, pname, org),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckProjectService(services, pid, true),
 				),
 			},
 			// Check that services are still enabled even after the resources are deleted.
-			resource.TestStep{
+			{
 				Config: testAccProject_create(pid, pname, org),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckProjectService(services, pid, true),
 				),
+			},
+		},
+	})
+}
+
+func TestAccProjectService_disableDependentServices(t *testing.T) {
+	t.Parallel()
+
+	org := getTestOrgFromEnv(t)
+	billingId := getTestBillingAccountFromEnv(t)
+	pid := "terraform-" + acctest.RandString(10)
+	services := []string{"cloudbuild.googleapis.com", "containerregistry.googleapis.com"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:  func() { testAccPreCheck(t) },
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProjectService_disableDependentServices(services, pid, pname, org, billingId, "false"),
+			},
+			{
+				ResourceName:            "google_project_service.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"disable_on_destroy"},
+			},
+			{
+				Config:      testAccProjectService_dependencyRemoved(services, pid, pname, org, billingId),
+				ExpectError: regexp.MustCompile("Please specify disable_dependent_services=true if you want to proceed with disabling all services."),
+			},
+			{
+				Config: testAccProjectService_disableDependentServices(services, pid, pname, org, billingId, "true"),
+			},
+			{
+				ResourceName:            "google_project_service.test",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"disable_on_destroy"},
+			},
+			{
+				Config:             testAccProjectService_dependencyRemoved(services, pid, pname, org, billingId),
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestAccProjectService_handleNotFound(t *testing.T) {
+	t.Parallel()
+
+	org := getTestOrgFromEnv(t)
+	pid := "terraform-" + acctest.RandString(10)
+	service := "iam.googleapis.com"
+	resource.Test(t, resource.TestCase{
+		PreCheck:  func() { testAccPreCheck(t) },
+		Providers: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProjectService_handleNotFound(service, pid, pname, org),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckProjectService([]string{service}, pid, true),
+				),
+			},
+			// Delete the project, implicitly deletes service, expect the plan to want to create the service again
+			{
+				Config:             testAccProjectService_handleNotFoundNoProject(service, pid),
+				ExpectNonEmptyPlan: true,
 			},
 		},
 	})
@@ -111,6 +179,44 @@ resource "google_project_service" "test2" {
 `, pid, name, org, services[0], services[1])
 }
 
+func testAccProjectService_disableDependentServices(services []string, pid, name, org, billing, disableDependentServices string) string {
+	return fmt.Sprintf(`
+resource "google_project" "acceptance" {
+  project_id      = "%s"
+  name            = "%s"
+  org_id          = "%s"
+  billing_account = "%s"
+}
+
+resource "google_project_service" "test" {
+  project = "${google_project.acceptance.project_id}"
+  service = "%s"
+}
+
+resource "google_project_service" "test2" {
+  project                    = "${google_project.acceptance.project_id}"
+  service                    = "%s"
+  disable_dependent_services = %s
+}
+`, pid, name, org, billing, services[0], services[1], disableDependentServices)
+}
+
+func testAccProjectService_dependencyRemoved(services []string, pid, name, org, billing string) string {
+	return fmt.Sprintf(`
+resource "google_project" "acceptance" {
+  project_id      = "%s"
+  name            = "%s"
+  org_id          = "%s"
+  billing_account = "%s"
+}
+
+resource "google_project_service" "test" {
+  project = "${google_project.acceptance.project_id}"
+  service = "%s"
+}
+`, pid, name, org, billing, services[0])
+}
+
 func testAccProjectService_noDisable(services []string, pid, name, org string) string {
 	return fmt.Sprintf(`
 resource "google_project" "acceptance" {
@@ -131,4 +237,34 @@ resource "google_project_service" "test2" {
   disable_on_destroy = false
 }
 `, pid, name, org, services[0], services[1])
+}
+
+func testAccProjectService_handleNotFound(service, pid, name, org string) string {
+	return fmt.Sprintf(`
+resource "google_project" "acceptance" {
+  project_id = "%s"
+  name       = "%s"
+  org_id     = "%s"
+}
+
+// by passing through locals, we break the dependency chain
+// see terraform-provider-google#1292
+locals {
+  project_id = "${google_project.acceptance.project_id}"
+}
+
+resource "google_project_service" "test" {
+  project = "${local.project_id}"
+  service = "%s"
+}
+`, pid, name, org, service)
+}
+
+func testAccProjectService_handleNotFoundNoProject(service, pid string) string {
+	return fmt.Sprintf(`
+resource "google_project_service" "test" {
+  project = "%s"
+  service = "%s"
+}
+`, pid, service)
 }

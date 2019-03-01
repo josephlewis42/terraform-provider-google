@@ -45,6 +45,7 @@ instances in all other subnets of the same VPC network, regardless of
 region, using their RFC1918 private IP addresses. You can isolate portions
 of the network, even entire subnets, using firewall rules.
 
+
 To get more information about Subnetwork, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/rest/beta/subnetworks)
@@ -52,29 +53,36 @@ To get more information about Subnetwork, see:
     * [Private Google Access](https://cloud.google.com/vpc/docs/configure-private-google-access)
     * [Cloud Networking](https://cloud.google.com/vpc/docs/using-vpc)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=subnetwork_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Subnetwork Basic
+
 
 ```hcl
-  resource "google_compute_network" "custom-test" {
-    name                    = "test-network"
-    auto_create_subnetworks = false
+resource "google_compute_subnetwork" "network-with-private-secondary-ip-ranges" {
+  name          = "test-subnetwork"
+  ip_cidr_range = "10.2.0.0/16"
+  region        = "us-central1"
+  network       = "${google_compute_network.custom-test.self_link}"
+  secondary_ip_range {
+    range_name    = "tf-test-secondary-range-update1"
+    ip_cidr_range = "192.168.10.0/24"
   }
+}
 
-  resource "google_compute_subnetwork" "network-with-private-secondary-ip-ranges" {
-    name          = "test-subnetwork"
-    ip_cidr_range = "10.2.0.0/16"
-    region        = "us-central1"
-    network       = "${google_compute_network.custom-test.self_link}"
-    secondary_ip_range {
-      range_name    = "tf-test-secondary-range-update1"
-      ip_cidr_range = "192.168.10.0/24"
-    }
-  }
+resource "google_compute_network" "custom-test" {
+  name                    = "test-network"
+  auto_create_subnetworks = false
+}
 ```
 
 ## Argument Reference
 
 The following arguments are supported:
+
 
 * `ip_cidr_range` -
   (Required)
@@ -82,6 +90,7 @@ The following arguments are supported:
   Provide this property when you create the subnetwork. For example,
   10.0.0.0/8 or 192.168.0.0/16. Ranges must be unique and
   non-overlapping within a network. Only IPv4 is supported.
+
 * `name` -
   (Required)
   The name of the resource, provided by the client when initially
@@ -91,6 +100,7 @@ The following arguments are supported:
   means the first character must be a lowercase letter, and all
   following characters must be a dash, lowercase letter, or digit,
   except the last character, which cannot be a dash.
+
 * `network` -
   (Required)
   The network this subnet belongs to.
@@ -99,54 +109,64 @@ The following arguments are supported:
 
 - - -
 
+
 * `description` -
   (Optional)
   An optional description of this resource. Provide this property when
   you create the resource. This field can be set only at resource
   creation time.
+
 * `enable_flow_logs` -
   (Optional)
   Whether to enable flow logging for this subnetwork.
+
 * `secondary_ip_range` -
   (Optional)
   An array of configurations for secondary IP ranges for VM instances
   contained in this subnetwork. The primary IP of such VM must belong
   to the primary ipCidrRange of the subnetwork. The alias IPs may belong
   to either primary or secondary ranges.  Structure is documented below.
+
 * `private_ip_google_access` -
   (Optional)
-  Whether the VMs in this subnet can access Google services without
-  assigned external IP addresses.
+  When enabled, VMs in this subnetwork without external IP addresses can
+  access Google APIs and services by using Private Google Access.
+
 * `region` -
   (Optional)
   URL of the GCP region for this subnetwork.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
+
 The `secondary_ip_range` block supports:
+
 * `range_name` -
   (Required)
   The name associated with this subnetwork secondary range, used
   when adding an alias IP range to a VM instance. The name must
   be 1-63 characters long, and comply with RFC1035. The name
   must be unique within the subnetwork.
+
 * `ip_cidr_range` -
   (Required)
   The range of IP addresses belonging to this subnetwork secondary
   range. Provide this property when you create the subnetwork.
   Ranges must be unique and non-overlapping with all primary and
   secondary IP ranges within a network. Only IPv4 is supported.
-    
 
 ## Attributes Reference
 
 In addition to the arguments listed above, the following computed attributes are exported:
 
+
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
+
 * `gateway_address` -
   The gateway address for default routes to reach destination addresses
   outside this subnetwork.
+
 * `fingerprint` -
   Fingerprint of this resource. This field is used internally during
   updates of this resource.
@@ -172,3 +192,6 @@ $ terraform import google_compute_subnetwork.default {{region}}/{{name}}
 $ terraform import google_compute_subnetwork.default {{project}}/{{region}}/{{name}}
 $ terraform import google_compute_subnetwork.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

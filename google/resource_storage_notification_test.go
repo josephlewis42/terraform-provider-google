@@ -13,8 +13,7 @@ import (
 )
 
 var (
-	gcsServiceAccount = fmt.Sprintf("serviceAccount:%s@gs-project-accounts.iam.gserviceaccount.com", os.Getenv("GOOGLE_PROJECT"))
-	payload           = "JSON_API_V1"
+	payload = "JSON_API_V1"
 )
 
 func TestAccStorageNotification_basic(t *testing.T) {
@@ -32,7 +31,7 @@ func TestAccStorageNotification_basic(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccStorageNotificationDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleStorageNotificationBasic(bucketName, topicName, topic),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckStorageNotificationExists(
@@ -47,12 +46,12 @@ func TestAccStorageNotification_basic(t *testing.T) {
 						"google_storage_notification.notification_with_prefix", "object_name_prefix", "foobar"),
 				),
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_storage_notification.notification",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_storage_notification.notification_with_prefix",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -78,7 +77,7 @@ func TestAccStorageNotification_withEventsAndAttributes(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccStorageNotificationDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testGoogleStorageNotificationOptionalEventsAttributes(bucketName, topicName, topic, eventType1, eventType2),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckStorageNotificationExists(
@@ -95,7 +94,7 @@ func TestAccStorageNotification_withEventsAndAttributes(t *testing.T) {
 						&notification, "new-attribute", "new-attribute-value"),
 				),
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_storage_notification.notification",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -185,14 +184,17 @@ resource "google_storage_bucket" "bucket" {
 resource "google_pubsub_topic" "topic" {
 	name = "%s"
 }
+
 // We have to provide GCS default storage account with the permission
 // to publish to a Cloud Pub/Sub topic from this project
 // Otherwise notification configuration won't work
+data "google_storage_project_service_account" "gcs_account" {}
+
 resource "google_pubsub_topic_iam_binding" "binding" {
 	topic   = "${google_pubsub_topic.topic.name}"
 	role    = "roles/pubsub.publisher"
 		  
-	members = ["%s"]
+	members = ["serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"]
 }
 
 resource "google_storage_notification" "notification" {
@@ -210,7 +212,7 @@ resource "google_storage_notification" "notification_with_prefix" {
 	depends_on         = ["google_pubsub_topic_iam_binding.binding"]
 }
 
-`, bucketName, topicName, gcsServiceAccount)
+`, bucketName, topicName)
 }
 
 func testGoogleStorageNotificationOptionalEventsAttributes(bucketName, topicName, topic, eventType1, eventType2 string) string {
@@ -222,14 +224,17 @@ resource "google_storage_bucket" "bucket" {
 resource "google_pubsub_topic" "topic" {
 	name = "%s"
 }
+
 // We have to provide GCS default storage account with the permission
 // to publish to a Cloud Pub/Sub topic from this project
 // Otherwise notification configuration won't work
+data "google_storage_project_service_account" "gcs_account" {}
+
 resource "google_pubsub_topic_iam_binding" "binding" {
 	topic       = "${google_pubsub_topic.topic.name}"
 	role        = "roles/pubsub.publisher"
 		  
-	members     = ["%s"]
+	members     = ["serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"]
 }
 
 resource "google_storage_notification" "notification" {
@@ -237,11 +242,11 @@ resource "google_storage_notification" "notification" {
 	payload_format    = "JSON_API_V1"
 	topic             = "${google_pubsub_topic.topic.id}"
 	event_types       = ["%s","%s"]
-	custom_attributes {
+	custom_attributes = {
 		new-attribute = "new-attribute-value"
 	}
 	depends_on        = ["google_pubsub_topic_iam_binding.binding"]
 }
 
-`, bucketName, topicName, gcsServiceAccount, eventType1, eventType2)
+`, bucketName, topicName, eventType1, eventType2)
 }

@@ -21,7 +21,11 @@ Three different resources help you manage your IAM policy for a project. Each of
 ## google\_project\_iam\_policy
 
 ~> **Be careful!** You can accidentally lock yourself out of your project
-   using this resource. Proceed with caution.
+   using this resource. Deleting a `google_project_iam_policy` removes access
+   from anyone without organization-level access to the project. Proceed with caution.
+   It's not recommended to use `google_project_iam_policy` with your provider project
+   to avoid locking yourself out, and it should generally only be used with projects
+   fully managed by Terraform.
 
 ```hcl
 resource "google_project_iam_policy" "project" {
@@ -74,7 +78,7 @@ The following arguments are supported:
   * **user:{emailid}**: An email address that represents a specific Google account. For example, alice@gmail.com or joe@example.com.
   * **serviceAccount:{emailid}**: An email address that represents a service account. For example, my-other-app@appspot.gserviceaccount.com.
   * **group:{emailid}**: An email address that represents a Google group. For example, admins@example.com.
-  * **domain:{domain}**: A Google Apps domain name that represents all the users of that domain. For example, google.com or example.com.
+  * **domain:{domain}**: A G Suite domain (primary, instead of alias) name that represents all the users of that domain. For example, google.com or example.com.
 
 * `role` - (Required) The role that should be applied. Only one
     `google_project_iam_binding` can be used per role. Note that custom roles must be of the format
@@ -86,28 +90,13 @@ The following arguments are supported:
 
     Changing this updates the policy.
 
-    Deleting this removes the policy, but leaves the original project policy
-    intact. If there are overlapping `binding` entries between the original
-    project policy and the data source policy, they will be removed.
+    Deleting this removes all policies from the project, locking out users without
+    organization-level access.
 
-* `project` - (Optional) The project ID. If not specified, uses the
-    ID of the project configured with the provider.
-
-* `authoritative` - (DEPRECATED) (Optional, only for `google_project_iam_policy`)
-    A boolean value indicating if this policy
-    should overwrite any existing IAM policy on the project. When set to true,
-    **any policies not in your config file will be removed**. This can **lock
-    you out** of your project until an Organization Administrator grants you
-    access again, so please exercise caution. If this argument is `true` and you
-    want to delete the resource, you must set the `disable_project` argument to
-    `true`, acknowledging that the project will be inaccessible to anyone but the
-    Organization Admins, as it will no longer have an IAM policy. Rather than using
-    this, you should use `google_project_iam_binding` and
-    `google_project_iam_member`.
-
-* `disable_project` - (DEPRECATED) (Optional, only for `google_project_iam_policy`)
-    A boolean value that must be set to `true`
-    if you want to delete a `google_project_iam_policy` that is authoritative.
+* `project` - (Optional) The project ID. If not specified for `google_project_iam_binding`
+or `google_project_iam_member`, uses the ID of the project configured with the provider.
+Required for `google_project_iam_policy` - you must explicitly set the project, and it
+will not be inferred from the provider.
     
 ## Attributes Reference
 
@@ -116,18 +105,23 @@ exported:
 
 * `etag` - (Computed) The etag of the project's IAM policy.
 
-* `restore_policy` - (DEPRECATED) (Computed, only for `google_project_iam_policy`)
-    The IAM policy that will be restored when a
-    non-authoritative policy resource is deleted.
 
 ## Import
 
-IAM resources can be imported using the `project_id`, role, and account.
+IAM member imports use space-delimited identifiers; the resource in question, the role, and the account.  This member resource can be imported using the `project_id`, role, and member e.g.
+
+```
+$ terraform import google_project_iam_member.my_project "your-project-id roles/viewer user:user:foo@example.com"
+```
+
+IAM binding imports use space-delimited identifiers; the resource in question and the role.  This binding resource can be imported using the `project_id` and role, e.g.
+
+```
+terraform import google_project_iam_binding.my_project "your-project-id roles/viewer"
+```
+
+IAM policy imports use the identifier of the resource in question.  This policy resource can be imported using the `project_id`.
 
 ```
 $ terraform import google_project_iam_policy.my_project your-project-id
-
-$ terraform import google_project_iam_binding.my_project "your-project-id roles/viewer"
-
-$ terraform import google_project_iam_member.my_project "your-project-id roles/viewer foo@example.com"
 ```

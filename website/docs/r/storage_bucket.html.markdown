@@ -10,12 +10,15 @@ description: |-
 
 Creates a new bucket in Google cloud storage service (GCS).
 Once a bucket has been created, its location can't be changed.
-[ACLs](https://cloud.google.com/storage/docs/access-control/lists) can be applied using the `google_storage_bucket_acl` resource.
+[ACLs](https://cloud.google.com/storage/docs/access-control/lists) can be applied
+using the [`google_storage_bucket_acl` resource](/docs/providers/google/r/storage_bucket_acl.html).
+
 For more information see
 [the official documentation](https://cloud.google.com/storage/docs/overview)
 and
 [API](https://cloud.google.com/storage/docs/json_api/v1/buckets).
 
+**Note**: When importing a bucket or using only the default provider project for bucket creation, you will need to enable the Compute API and will otherwise get an error with a link to the API enablement page. If you would prefer not to enable the Compute API, make sure to explicitly set `project` on the bucket resource.
 
 ## Example Usage
 
@@ -63,6 +66,10 @@ The following arguments are supported:
 * `labels` - (Optional) A set of key/value label pairs to assign to the bucket.
 
 * `logging` - (Optional) The bucket's [Access & Storage Logs](https://cloud.google.com/storage/docs/access-logs) configuration.
+
+* `encryption` - (Optional) The bucket's encryption configuration.
+
+* `requester_pays` - (Optional, Default: false) Enables [Requester Pays](https://cloud.google.com/storage/docs/requester-pays) on a storage bucket.
 
 The `lifecycle_rule` block supports:
 
@@ -115,7 +122,13 @@ The `logging` block supports:
 * `log_bucket` - (Required) The bucket that will receive log objects.
 
 * `log_object_prefix` - (Optional, Computed) The object prefix for log objects. If it's not provided,
-    by default GCS sets this to the log_bucket's name.
+    by default GCS sets this to this bucket's name.
+
+The `encryption` block supports:
+
+* `default_kms_key_name`: A Cloud KMS key that will be used to encrypt objects inserted into this bucket, if no encryption method is specified.
+  You must pay attention to whether the crypto key is available in the location that this bucket is created in.
+  See [the docs](https://cloud.google.com/storage/docs/encryption/using-customer-managed-keys) for more details.
 
 ## Attributes Reference
 
@@ -134,4 +147,3 @@ Storage buckets can be imported using the `name`, e.g.
 $ terraform import google_storage_bucket.image-store image-store-bucket
 ```
 
-Note that when importing a bucket (and only when importing), the Compute API needs to be enabled - you'll see an error with a link to the enablement page if it is not.

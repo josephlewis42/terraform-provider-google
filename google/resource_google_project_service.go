@@ -26,13 +26,19 @@ func resourceGoogleProjectService() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
-			"project": &schema.Schema{
+			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 				ForceNew: true,
 			},
-			"disable_on_destroy": &schema.Schema{
+
+			"disable_dependent_services": {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+
+			"disable_on_destroy": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
@@ -65,6 +71,16 @@ func resourceGoogleProjectServiceRead(d *schema.ResourceData, meta interface{}) 
 	id, err := parseProjectServiceId(d.Id())
 	if err != nil {
 		return err
+	}
+
+	project, err := config.clientResourceManager.Projects.Get(id.project).Do()
+	if err != nil {
+		return handleNotFoundError(err, d, id.project)
+	}
+	if project.LifecycleState == "DELETE_REQUESTED" {
+		log.Printf("[WARN] Removing %s from state, its project is deleted", id.terraformId())
+		d.SetId("")
+		return nil
 	}
 
 	services, err := getApiServices(id.project, config, map[string]struct{}{})
@@ -100,7 +116,17 @@ func resourceGoogleProjectServiceDelete(d *schema.ResourceData, meta interface{}
 		return err
 	}
 
-	if err = disableService(id.service, id.project, config); err != nil {
+	project, err := config.clientResourceManager.Projects.Get(id.project).Do()
+	if err != nil {
+		return handleNotFoundError(err, d, id.project)
+	}
+	if project.LifecycleState == "DELETE_REQUESTED" {
+		log.Printf("[WARN] Removing %s from state, its project is deleted", id.terraformId())
+		d.SetId("")
+		return nil
+	}
+
+	if err = disableService(id.service, id.project, config, d.Get("disable_dependent_services").(bool)); err != nil {
 		return fmt.Errorf("Error disabling service: %s", err)
 	}
 

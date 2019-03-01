@@ -38,14 +38,15 @@ resource "google_compute_instance_template" "default" {
 
   // Create a new boot disk from an image
   disk {
-    source_image = "debian-cloud/debian-8"
+    source_image = "debian-cloud/debian-9"
     auto_delete  = true
     boot         = true
   }
 
   // Use an existing disk resource
   disk {
-    source      = "foo_existing_disk"
+    // Instance Templates reference disks by name, not self link
+    source      = "${google_compute_disk.foobar.name}"
     auto_delete = false
     boot        = false
   }
@@ -54,13 +55,26 @@ resource "google_compute_instance_template" "default" {
     network = "default"
   }
 
-  metadata {
+  metadata = {
     foo = "bar"
   }
 
   service_account {
     scopes = ["userinfo-email", "compute-ro", "storage-ro"]
   }
+}
+
+data "google_compute_image" "my_image" {
+  family  = "debian-9"
+  project = "debian-cloud"
+}
+
+resource "google_compute_disk" "foobar" {
+  name  = "existing-disk"
+  image = "${data.google_compute_image.my_image.self_link}"
+  size  = 10
+  type  = "pd-ssd"
+  zone  = "us-central1-a"
 }
 ```
 
@@ -108,6 +122,61 @@ With this setup Terraform generates a unique name for your Instance
 Template and can then update the Instance Group manager without conflict before
 destroying the previous Instance Template.
 
+## Deploying the Latest Image
+
+A common way to use instance templates and managed instance groups is to deploy the
+latest image in a family, usually the latest build of your application. There are two
+ways to do this in Terraform, and they have their pros and cons. The difference ends
+up being in how "latest" is interpreted. You can either deploy the latest image available
+when Terraform runs, or you can have each instance check what the latest image is when
+it's being created, either as part of a scaling event or being rebuilt by the instance
+group manager.
+
+If you're not sure, we recommend deploying the latest image available when Terraform runs,
+because this means all the instances in your group will be based on the same image, always,
+and means that no upgrades or changes to your instances happen outside of a `terraform apply`.
+You can achieve this by using the [`google_compute_image`](../d/datasource_compute_image.html)
+data source, which will retrieve the latest image on every `terraform apply`, and will update
+the template to use that specific image:
+
+```tf
+data "google_compute_image" "my_image" {
+  family  = "debian-9"
+  project = "debian-cloud"
+}
+
+resource "google_compute_instance_template" "instance_template" {
+  name_prefix  = "instance-template-"
+  machine_type = "n1-standard-1"
+  region       = "us-central1"
+
+  // boot disk
+  disk {
+    initialize_params {
+      image = "${data.google_compute_image.my_image.self_link}"
+    }
+  }
+}
+```
+
+To have instances update to the latest on every scaling event or instance re-creation,
+use the family as the image for the disk, and it will use GCP's default behavior, setting
+the image for the template to the family:
+
+```tf
+resource "google_compute_instance_template" "instance_template" {
+  name_prefix  = "instance-template-"
+  machine_type = "n1-standard-1"
+  region       = "us-central1"
+
+  // boot disk
+  disk {
+    initialize_params {
+      image = "debian-cloud/debian-9"
+    }
+  }
+}
+```
 
 ## Argument Reference
 
@@ -205,8 +274,8 @@ The `disk` block supports:
     or READ_ONLY. If you are attaching or creating a boot disk, this must
     read-write mode.
 
-* `source` - (Required if source_image not set) The name of the disk (such as
-    those managed by `google_compute_disk`) to attach.
+* `source` - (Required if source_image not set) The name (**not self_link**)
+    of the disk (such as those managed by `google_compute_disk`) to attach. 
 
 * `disk_type` - (Optional) The GCE disk type. Can be either `"pd-ssd"`,
     `"local-ssd"`, or `"pd-standard"`.
@@ -216,6 +285,20 @@ The `disk` block supports:
 
 * `type` - (Optional) The type of GCE disk, can be either `"SCRATCH"` or
     `"PERSISTENT"`.
+
+* `disk_encryption_key` - (Optional) Encrypts or decrypts a disk using a customer-supplied encryption key.
+
+    If you are creating a new disk, this field encrypts the new disk using an encryption key that you provide. If you are attaching an existing disk that is already encrypted, this field decrypts the disk using the customer-supplied encryption key.
+
+    If you encrypt a disk using a customer-supplied key, you must provide the same key again when you attempt to use this resource at a later time. For example, you must provide the key when you create a snapshot or an image from the disk or when you attach the disk to a virtual machine instance.
+
+    If you do not provide an encryption key, then the disk will be encrypted using an automatically generated key and you do not need to provide a key to use the disk later.
+
+    Instance templates do not store customer-supplied encryption keys, so you cannot use your own keys to encrypt disks in a managed instance group.
+
+The `disk_encryption_key` block supports:
+
+* `kms_key_self_link` - (Optional) The self link of the encryption key that is stored in Google Cloud KMS
 
 The `network_interface` block supports:
 
@@ -230,7 +313,7 @@ The `network_interface` block supports:
 * `subnetwork_project` - (Optional) The ID of the project in which the subnetwork belongs.
     If it is not provided, the provider project is used.
 
-* `address` - (Optional) The private IP address to assign to the instance. If
+* `network_ip` - (Optional) The private IP address to assign to the instance. If
     empty, the address will be automatically assigned.
 
 * `access_config` - (Optional) Access configurations, i.e. IPs via which this

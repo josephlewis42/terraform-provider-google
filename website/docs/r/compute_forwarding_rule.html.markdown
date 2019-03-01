@@ -25,13 +25,20 @@ A ForwardingRule resource. A ForwardingRule resource specifies which pool
 of target virtual machines to forward a packet to if it matches the given
 [IPAddress, IPProtocol, portRange] tuple.
 
+
 To get more information about ForwardingRule, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/latest/forwardingRule)
 * How-to Guides
     * [Official Documentation](https://cloud.google.com/compute/docs/load-balancing/network/forwarding-rules)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=forwarding_rule_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Forwarding Rule Basic
+
 
 ```hcl
 resource "google_compute_forwarding_rule" "default" {
@@ -39,11 +46,16 @@ resource "google_compute_forwarding_rule" "default" {
   target     = "${google_compute_target_pool.default.self_link}"
   port_range = "80"
 }
+
+resource "google_compute_target_pool" "default" {
+  name = "website-target-pool"
+}
 ```
 
 ## Argument Reference
 
 The following arguments are supported:
+
 
 * `name` -
   (Required)
@@ -58,17 +70,17 @@ The following arguments are supported:
 
 - - -
 
+
 * `description` -
   (Optional)
   An optional description of this resource. Provide this property when
   you create the resource.
+
 * `ip_address` -
   (Optional)
   The IP address that this forwarding rule is serving on behalf of.
-
   Addresses are restricted based on the forwarding rule's load balancing
   scheme (EXTERNAL or INTERNAL) and scope (global or regional).
-
   When the load balancing scheme is EXTERNAL, for global forwarding
   rules, the address must be a global IP, and for regional forwarding
   rules, the address must live in the same region as the forwarding
@@ -76,17 +88,14 @@ The following arguments are supported:
   scope (global or regional) will be assigned. A regional forwarding
   rule supports IPv4 only. A global forwarding rule supports either IPv4
   or IPv6.
-
   When the load balancing scheme is INTERNAL, this can only be an RFC
   1918 IP address belonging to the network/subnet configured for the
   forwarding rule. By default, if this field is empty, an ephemeral
   internal IP address will be automatically allocated from the IP range
   of the subnet or network configured for this forwarding rule.
-
   An address can be specified either by a literal IP address or a URL
   reference to an existing Address resource. The following examples are
   all valid:
-
   * 100.1.2.3
   * https://www.googleapis.com/compute/v1/projects/project/regions/
        region/addresses/address
@@ -94,24 +103,26 @@ The following arguments are supported:
   * regions/region/addresses/address
   * global/addresses/address
   * address
+
 * `ip_protocol` -
   (Optional)
   The IP protocol to which this rule applies. Valid options are TCP,
   UDP, ESP, AH, SCTP or ICMP.
-
   When the load balancing scheme is INTERNAL, only TCP and UDP are
   valid.
+
 * `backend_service` -
   (Optional)
   A reference to a BackendService to receive the matched traffic.
-
   This is used for internal load balancing.
   (not used for external load balancing)
+
 * `ip_version` -
   (Optional)
   The IP Version that will be used by this forwarding rule. Valid
   options are IPV4 or IPV6. This can only be specified for a global
   forwarding rule.
+
 * `load_balancing_scheme` -
   (Optional)
   This signifies what the ForwardingRule will be used for and can only
@@ -119,27 +130,25 @@ The following arguments are supported:
   means that this will be used for Internal Network Load Balancing (TCP,
   UDP). The value of EXTERNAL means that this will be used for External
   Load Balancing (HTTP(S) LB, External TCP/UDP LB, SSL Proxy)
+
 * `network` -
   (Optional)
   For internal load balancing, this field identifies the network that
   the load balanced IP should belong to for this Forwarding Rule. If
   this field is not specified, the default network will be used.
-
   This field is not used for external load balancing.
+
 * `port_range` -
   (Optional)
   This field is used along with the target field for TargetHttpProxy,
   TargetHttpsProxy, TargetSslProxy, TargetTcpProxy, TargetVpnGateway,
   TargetPool, TargetInstance.
-
   Applicable only when IPProtocol is TCP, UDP, or SCTP, only packets
   addressed to ports in the specified range will be forwarded to target.
   Forwarding rules with the same [IPAddress, IPProtocol] pair must have
   disjoint port ranges.
-
   Some types of forwarding target have constraints on the acceptable
   ports:
-
   * TargetHttpProxy: 80, 8080
   * TargetHttpsProxy: 443
   * TargetTcpProxy: 25, 43, 110, 143, 195, 443, 465, 587, 700, 993, 995,
@@ -147,29 +156,27 @@ The following arguments are supported:
   * TargetSslProxy: 25, 43, 110, 143, 195, 443, 465, 587, 700, 993, 995,
                     1883, 5222
   * TargetVpnGateway: 500, 4500
+
 * `ports` -
   (Optional)
   This field is used along with the backend_service field for internal
   load balancing.
-
   When the load balancing scheme is INTERNAL, a single port or a comma
   separated list of ports can be configured. Only packets addressed to
   these ports will be forwarded to the backends configured with this
   forwarding rule.
-
   You may specify a maximum of up to 5 ports.
+
 * `subnetwork` -
   (Optional)
   A reference to a subnetwork.
-
   For internal load balancing, this field identifies the subnetwork that
   the load balanced IP should belong to for this Forwarding Rule.
-
   If the network specified is in auto subnet mode, this field is
   optional. However, if the network is in custom subnet mode, a
   subnetwork must be specified.
-
   This field is not used for external load balancing.
+
 * `target` -
   (Optional)
   A reference to a TargetPool resource to receive the matched traffic.
@@ -177,35 +184,19 @@ The following arguments are supported:
   region as the forwarding rule. For global forwarding rules, this
   target must be a global load balancing resource. The forwarded traffic
   must be of a type appropriate to the target object.
-
   This field is not used for internal load balancing.
-* `labels` -
-  (Optional)
-  Labels to apply to this forwarding rule.  A list of key->value pairs.
+
 * `network_tier` -
   (Optional)
   The networking tier used for configuring this address. This field can
   take the following values: PREMIUM or STANDARD. If this field is not
   specified, it is assumed to be PREMIUM.
-* `service_label` -
-  (Optional)
-  An optional prefix to the service name for this Forwarding Rule.
-  If specified, will be the first label of the fully qualified service
-  name.
 
-  The label must be 1-63 characters long, and comply with RFC1035.
-  Specifically, the label must be 1-63 characters long and match the
-  regular expression `[a-z]([-a-z0-9]*[a-z0-9])?` which means the first
-  character must be a lowercase letter, and all following characters
-  must be a dash, lowercase letter, or digit, except the last
-  character, which cannot be a dash.
-
-  This field is only used for internal load balancing.
 * `region` -
   (Optional)
   A reference to the region where the regional forwarding rule resides.
   This field is not applicable to global forwarding rules.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
 
@@ -213,14 +204,9 @@ The following arguments are supported:
 
 In addition to the arguments listed above, the following computed attributes are exported:
 
+
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
-* `label_fingerprint` -
-  The fingerprint used for optimistic locking of this resource.  Used
-  internally during updates.
-* `service_name` -
-  The internal fully qualified service name for this Forwarding Rule.
-  This field is only used for internal load balancing.
 * `self_link` - The URI of the created resource.
 
 
@@ -242,3 +228,6 @@ $ terraform import google_compute_forwarding_rule.default projects/{{project}}/r
 $ terraform import google_compute_forwarding_rule.default {{project}}/{{region}}/{{name}}
 $ terraform import google_compute_forwarding_rule.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

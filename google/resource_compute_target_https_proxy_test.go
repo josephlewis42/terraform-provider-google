@@ -14,35 +14,6 @@ const (
 	canonicalSslCertificateTemplate = "https://www.googleapis.com/compute/v1/projects/%s/global/sslCertificates/%s"
 )
 
-func TestAccComputeTargetHttpsProxy_basic(t *testing.T) {
-	t.Parallel()
-
-	var proxy compute.TargetHttpsProxy
-	resourceSuffix := acctest.RandString(10)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckComputeTargetHttpsProxyDestroy,
-		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: testAccComputeTargetHttpsProxy_basic1(resourceSuffix),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeTargetHttpsProxyExists(
-						"google_compute_target_https_proxy.foobar", &proxy),
-					testAccComputeTargetHttpsProxyDescription("Resource created for Terraform acceptance testing", &proxy),
-					testAccComputeTargetHttpsProxyHasSslCertificate("httpsproxy-test-cert1-"+resourceSuffix, &proxy),
-				),
-			},
-			resource.TestStep{
-				ResourceName:      "google_compute_target_https_proxy.foobar",
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
-	})
-}
-
 func TestAccComputeTargetHttpsProxy_update(t *testing.T) {
 	t.Parallel()
 
@@ -54,7 +25,7 @@ func TestAccComputeTargetHttpsProxy_update(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeTargetHttpsProxyDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccComputeTargetHttpsProxy_basic1(resourceSuffix),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeTargetHttpsProxyExists(
@@ -64,7 +35,7 @@ func TestAccComputeTargetHttpsProxy_update(t *testing.T) {
 				),
 			},
 
-			resource.TestStep{
+			{
 				Config: testAccComputeTargetHttpsProxy_basic2(resourceSuffix),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeTargetHttpsProxyExists(
@@ -76,24 +47,6 @@ func TestAccComputeTargetHttpsProxy_update(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccCheckComputeTargetHttpsProxyDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "google_compute_target_https_proxy" {
-			continue
-		}
-
-		_, err := config.clientCompute.TargetHttpsProxies.Get(
-			config.Project, rs.Primary.ID).Do()
-		if err == nil {
-			return fmt.Errorf("TargetHttpsProxy still exists")
-		}
-	}
-
-	return nil
 }
 
 func testAccCheckComputeTargetHttpsProxyExists(n string, proxy *compute.TargetHttpsProxy) resource.TestCheckFunc {

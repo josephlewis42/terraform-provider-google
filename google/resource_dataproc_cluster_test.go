@@ -111,6 +111,7 @@ func TestAccDataprocCluster_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("google_dataproc_cluster.basic", "cluster_config.0.master_config.0.num_instances", "1"),
 					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.master_config.0.disk_config.0.boot_disk_size_gb"),
 					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.master_config.0.disk_config.0.num_local_ssds"),
+					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.master_config.0.disk_config.0.boot_disk_type"),
 					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.master_config.0.machine_type"),
 					resource.TestCheckResourceAttr("google_dataproc_cluster.basic", "cluster_config.0.master_config.0.instance_names.#", "1"),
 
@@ -119,6 +120,7 @@ func TestAccDataprocCluster_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("google_dataproc_cluster.basic", "cluster_config.0.worker_config.0.num_instances", "2"),
 					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.worker_config.0.disk_config.0.boot_disk_size_gb"),
 					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.worker_config.0.disk_config.0.num_local_ssds"),
+					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.worker_config.0.disk_config.0.boot_disk_type"),
 					resource.TestCheckResourceAttrSet("google_dataproc_cluster.basic", "cluster_config.0.worker_config.0.machine_type"),
 					resource.TestCheckResourceAttr("google_dataproc_cluster.basic", "cluster_config.0.worker_config.0.instance_names.#", "2"),
 
@@ -132,7 +134,67 @@ func TestAccDataprocCluster_basic(t *testing.T) {
 	})
 }
 
-func TestAccDataprocCluster_basicWithInternalIpOnlyTrue(t *testing.T) {
+func TestAccDataprocCluster_withAccelerators(t *testing.T) {
+	t.Parallel()
+
+	rnd := acctest.RandString(10)
+	var cluster dataproc.Cluster
+
+	project := getTestProjectFromEnv()
+	zone := "us-central1-a"
+	acceleratorType := "nvidia-tesla-k80"
+	acceleratorLink := fmt.Sprintf("https://www.googleapis.com/compute/beta/projects/%s/zones/%s/acceleratorTypes/%s", project, zone, acceleratorType)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDataprocClusterDestroy(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDataprocCluster_withAccelerators(rnd, zone, acceleratorType),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataprocClusterExists("google_dataproc_cluster.accelerated_cluster", &cluster),
+					testAccCheckDataprocClusterAccelerator(&cluster, 1, acceleratorLink, 1, acceleratorLink),
+				),
+			},
+		},
+	})
+}
+
+func testAccCheckDataprocClusterAccelerator(cluster *dataproc.Cluster, masterCount int, masterAccelerator string, workerCount int, workerAccelerator string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+
+		master := cluster.Config.MasterConfig.Accelerators
+		if len(master) != 1 {
+			return fmt.Errorf("Saw %d master accelerator types instead of 1", len(master))
+		}
+
+		if int(master[0].AcceleratorCount) != masterCount {
+			return fmt.Errorf("Saw %d master accelerators instead of %d", int(master[0].AcceleratorCount), masterCount)
+		}
+
+		if master[0].AcceleratorTypeUri != masterAccelerator {
+			return fmt.Errorf("Saw %s master accelerator type instead of %s", master[0].AcceleratorTypeUri, masterAccelerator)
+		}
+
+		worker := cluster.Config.WorkerConfig.Accelerators
+		if len(worker) != 1 {
+			return fmt.Errorf("Saw %d worker accelerator types instead of 1", len(worker))
+		}
+
+		if int(worker[0].AcceleratorCount) != workerCount {
+			return fmt.Errorf("Saw %d worker accelerators instead of %d", int(worker[0].AcceleratorCount), workerCount)
+		}
+
+		if worker[0].AcceleratorTypeUri != workerAccelerator {
+			return fmt.Errorf("Saw %s worker accelerator type instead of %s", worker[0].AcceleratorTypeUri, workerAccelerator)
+		}
+
+		return nil
+	}
+}
+
+func TestAccDataprocCluster_withInternalIpOnlyTrue(t *testing.T) {
 	t.Parallel()
 
 	var cluster dataproc.Cluster
@@ -143,7 +205,7 @@ func TestAccDataprocCluster_basicWithInternalIpOnlyTrue(t *testing.T) {
 		CheckDestroy: testAccCheckDataprocClusterDestroy(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDataprocCluster_basicWithInternalIpOnlyTrue(rnd),
+				Config: testAccDataprocCluster_withInternalIpOnlyTrue(rnd),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckDataprocClusterExists("google_dataproc_cluster.basic", &cluster),
 
@@ -155,7 +217,7 @@ func TestAccDataprocCluster_basicWithInternalIpOnlyTrue(t *testing.T) {
 	})
 }
 
-func TestAccDataprocCluster_basicWithMetadata(t *testing.T) {
+func TestAccDataprocCluster_withMetadataAndTags(t *testing.T) {
 	t.Parallel()
 
 	var cluster dataproc.Cluster
@@ -166,12 +228,13 @@ func TestAccDataprocCluster_basicWithMetadata(t *testing.T) {
 		CheckDestroy: testAccCheckDataprocClusterDestroy(),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDataprocCluster_basicWithMetadata(rnd),
+				Config: testAccDataprocCluster_withMetadataAndTags(rnd),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckDataprocClusterExists("google_dataproc_cluster.basic", &cluster),
 
 					resource.TestCheckResourceAttr("google_dataproc_cluster.basic", "cluster_config.0.gce_cluster_config.0.metadata.foo", "bar"),
 					resource.TestCheckResourceAttr("google_dataproc_cluster.basic", "cluster_config.0.gce_cluster_config.0.metadata.baz", "qux"),
+					resource.TestCheckResourceAttr("google_dataproc_cluster.basic", "cluster_config.0.gce_cluster_config.0.tags.#", "4"),
 				),
 			},
 		},
@@ -358,7 +421,7 @@ func TestAccDataprocCluster_withImageVersion(t *testing.T) {
 				Config: testAccDataprocCluster_withImageVersion(rnd),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckDataprocClusterExists("google_dataproc_cluster.with_image_version", &cluster),
-					resource.TestCheckResourceAttr("google_dataproc_cluster.with_image_version", "cluster_config.0.software_config.0.image_version", "preview"),
+					resource.TestCheckResourceAttr("google_dataproc_cluster.with_image_version", "cluster_config.0.software_config.0.image_version", "1.3.7-deb9"),
 				),
 			},
 		},
@@ -412,6 +475,29 @@ func TestAccDataprocCluster_withNetworkRefs(t *testing.T) {
 					// successful creation of the clusters is good enough to assess it worked
 					testAccCheckDataprocClusterExists("google_dataproc_cluster.with_net_ref_by_url", &c1),
 					testAccCheckDataprocClusterExists("google_dataproc_cluster.with_net_ref_by_name", &c2),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDataprocCluster_KMS(t *testing.T) {
+	t.Parallel()
+
+	rnd := acctest.RandString(10)
+	kms := BootstrapKMSKey(t)
+	pid := getTestProjectFromEnv()
+
+	var cluster dataproc.Cluster
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckDataprocClusterDestroy(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDataprocCluster_KMS(pid, rnd, kms.CryptoKey.Name),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckDataprocClusterExists("google_dataproc_cluster.kms", &cluster),
 				),
 			},
 		},
@@ -532,19 +618,23 @@ func validateDataprocCluster_withConfigOverrides(n string, cluster *dataproc.Clu
 
 		clusterTests := []tfAndGCPTestField{
 			{"cluster_config.0.master_config.0.num_instances", "3", strconv.Itoa(int(cluster.Config.MasterConfig.NumInstances))},
-			{"cluster_config.0.master_config.0.disk_config.0.boot_disk_size_gb", "10", strconv.Itoa(int(cluster.Config.MasterConfig.DiskConfig.BootDiskSizeGb))},
+			{"cluster_config.0.master_config.0.disk_config.0.boot_disk_size_gb", "15", strconv.Itoa(int(cluster.Config.MasterConfig.DiskConfig.BootDiskSizeGb))},
 			{"cluster_config.0.master_config.0.disk_config.0.num_local_ssds", "0", strconv.Itoa(int(cluster.Config.MasterConfig.DiskConfig.NumLocalSsds))},
+			{"cluster_config.0.master_config.0.disk_config.0.boot_disk_type", "pd-ssd", cluster.Config.MasterConfig.DiskConfig.BootDiskType},
 			{"cluster_config.0.master_config.0.machine_type", "n1-standard-1", GetResourceNameFromSelfLink(cluster.Config.MasterConfig.MachineTypeUri)},
 			{"cluster_config.0.master_config.0.instance_names.#", "3", strconv.Itoa(len(cluster.Config.MasterConfig.InstanceNames))},
 
 			{"cluster_config.0.worker_config.0.num_instances", "3", strconv.Itoa(int(cluster.Config.WorkerConfig.NumInstances))},
-			{"cluster_config.0.worker_config.0.disk_config.0.boot_disk_size_gb", "11", strconv.Itoa(int(cluster.Config.WorkerConfig.DiskConfig.BootDiskSizeGb))},
+			{"cluster_config.0.worker_config.0.disk_config.0.boot_disk_size_gb", "16", strconv.Itoa(int(cluster.Config.WorkerConfig.DiskConfig.BootDiskSizeGb))},
 			{"cluster_config.0.worker_config.0.disk_config.0.num_local_ssds", "1", strconv.Itoa(int(cluster.Config.WorkerConfig.DiskConfig.NumLocalSsds))},
+			{"cluster_config.0.worker_config.0.disk_config.0.boot_disk_type", "pd-standard", cluster.Config.WorkerConfig.DiskConfig.BootDiskType},
 			{"cluster_config.0.worker_config.0.machine_type", "n1-standard-1", GetResourceNameFromSelfLink(cluster.Config.WorkerConfig.MachineTypeUri)},
 			{"cluster_config.0.worker_config.0.instance_names.#", "3", strconv.Itoa(len(cluster.Config.WorkerConfig.InstanceNames))},
 
 			{"cluster_config.0.preemptible_worker_config.0.num_instances", "1", strconv.Itoa(int(cluster.Config.SecondaryWorkerConfig.NumInstances))},
-			{"cluster_config.0.preemptible_worker_config.0.disk_config.0.boot_disk_size_gb", "12", strconv.Itoa(int(cluster.Config.SecondaryWorkerConfig.DiskConfig.BootDiskSizeGb))},
+			{"cluster_config.0.preemptible_worker_config.0.disk_config.0.boot_disk_size_gb", "17", strconv.Itoa(int(cluster.Config.SecondaryWorkerConfig.DiskConfig.BootDiskSizeGb))},
+			{"cluster_config.0.preemptible_worker_config.0.disk_config.0.num_local_ssds", "1", strconv.Itoa(int(cluster.Config.SecondaryWorkerConfig.DiskConfig.NumLocalSsds))},
+			{"cluster_config.0.preemptible_worker_config.0.disk_config.0.boot_disk_type", "pd-ssd", cluster.Config.SecondaryWorkerConfig.DiskConfig.BootDiskType},
 			{"cluster_config.0.preemptible_worker_config.0.instance_names.#", "1", strconv.Itoa(len(cluster.Config.SecondaryWorkerConfig.InstanceNames))},
 		}
 
@@ -626,7 +716,36 @@ resource "google_dataproc_cluster" "basic" {
 `, rnd)
 }
 
-func testAccDataprocCluster_basicWithInternalIpOnlyTrue(rnd string) string {
+func testAccDataprocCluster_withAccelerators(rnd, zone, acceleratorType string) string {
+	return fmt.Sprintf(`
+resource "google_dataproc_cluster" "accelerated_cluster" {
+	name                  = "dproc-cluster-test-%s"
+	region                = "us-central1"
+
+	cluster_config {
+		gce_cluster_config {
+			zone = "%s"
+		}
+
+		master_config {
+			accelerators {
+				accelerator_type  = "%s"
+				accelerator_count = "1"
+			}
+		}
+
+		worker_config {
+			accelerators {
+				accelerator_type  = "%s"
+				accelerator_count = "1"
+			}
+		}
+	}
+}
+`, rnd, zone, acceleratorType, acceleratorType)
+}
+
+func testAccDataprocCluster_withInternalIpOnlyTrue(rnd string) string {
 	return fmt.Sprintf(`
 variable subnetwork_cidr {
 	default = "10.0.0.0/16"
@@ -681,7 +800,7 @@ resource "google_dataproc_cluster" "basic" {
 	name                  = "dproc-cluster-test-%s"
 	region                = "us-central1"
 	depends_on            = ["google_compute_firewall.dataproc_network_firewall"]
-	
+
 	cluster_config {
 		gce_cluster_config {
 			subnetwork       = "${google_compute_subnetwork.dataproc_subnetwork.name}"
@@ -692,7 +811,7 @@ resource "google_dataproc_cluster" "basic" {
 `, rnd, rnd, rnd)
 }
 
-func testAccDataprocCluster_basicWithMetadata(rnd string) string {
+func testAccDataprocCluster_withMetadataAndTags(rnd string) string {
 	return fmt.Sprintf(`
 resource "google_dataproc_cluster" "basic" {
 	name   = "dproc-cluster-test-%s"
@@ -700,10 +819,11 @@ resource "google_dataproc_cluster" "basic" {
 
 	cluster_config {
 		gce_cluster_config {
-			metadata {
+			metadata = {
 				foo = "bar"
 				baz = "qux"
 			}
+			tags = ["my-tag", "your-tag", "our-tag", "their-tag"]
 		}
 	}
 }
@@ -740,7 +860,8 @@ resource "google_dataproc_cluster" "with_config_overrides" {
 			num_instances     = 3
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_type    = "pd-ssd"
+				boot_disk_size_gb = 15
 			}
 		}
 
@@ -748,7 +869,8 @@ resource "google_dataproc_cluster" "with_config_overrides" {
 			num_instances     = 3
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 11
+				boot_disk_type    = "pd-standard"
+				boot_disk_size_gb = 16
 				num_local_ssds    = 1
 			}
 		}
@@ -756,7 +878,9 @@ resource "google_dataproc_cluster" "with_config_overrides" {
 		preemptible_worker_config {
 			num_instances     = 1
 			disk_config {
-				boot_disk_size_gb = 12
+				boot_disk_type    = "pd-ssd"
+				boot_disk_size_gb = 17
+				num_local_ssds    = 1
 			}
 		}
 	}
@@ -796,7 +920,7 @@ resource "google_dataproc_cluster" "with_init_action" {
 		master_config {
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 
@@ -823,7 +947,7 @@ resource "google_dataproc_cluster" "updatable" {
 			num_instances      = "1"
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 
@@ -831,14 +955,14 @@ resource "google_dataproc_cluster" "updatable" {
 			num_instances      = "%d"
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 
 		preemptible_worker_config {
 			num_instances      = "%d"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 	}
@@ -875,7 +999,7 @@ resource "google_dataproc_cluster" "with_bucket" {
 		master_config {
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 	}
@@ -888,7 +1012,7 @@ resource "google_dataproc_cluster" "with_labels" {
 	name   = "dproc-cluster-test-%s"
 	region = "us-central1"
 
-	labels {
+	labels = {
 		key1 = "value1"
 	}
 
@@ -909,7 +1033,7 @@ resource "google_dataproc_cluster" "with_image_version" {
 
 	cluster_config {
 		software_config {
-			image_version = "preview"
+			image_version = "1.3.7-deb9"
 		}
 	}
 }`, rnd)
@@ -941,7 +1065,7 @@ resource "google_dataproc_cluster" "with_service_account" {
 		master_config {
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 
@@ -984,6 +1108,7 @@ resource "google_compute_firewall" "dataproc_network_firewall" {
 	name = "dproc-cluster-test-%s-allow-internal"
 	description = "Firewall rules for dataproc Terraform acceptance testing"
 	network = "${google_compute_network.dataproc_network.name}"
+	source_ranges = ["192.168.0.0/16"]
 
 	allow {
 		protocol = "icmp"
@@ -1016,7 +1141,7 @@ resource "google_dataproc_cluster" "with_net_ref_by_name" {
 		master_config {
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 
@@ -1042,7 +1167,7 @@ resource "google_dataproc_cluster" "with_net_ref_by_url" {
 		master_config {
 			machine_type      = "n1-standard-1"
 			disk_config {
-				boot_disk_size_gb = 10
+				boot_disk_size_gb = 15
 			}
 		}
 
@@ -1053,4 +1178,28 @@ resource "google_dataproc_cluster" "with_net_ref_by_url" {
 }
 
 `, netName, rnd, rnd, rnd)
+}
+
+func testAccDataprocCluster_KMS(pid, rnd, kmsKey string) string {
+	return fmt.Sprintf(`
+data "google_project" "project" {
+	project_id = "%s"
+}
+
+resource "google_project_iam_member" "kms-project-binding" {
+  project = "${data.google_project.project.project_id}"
+	role    = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+	member  = "serviceAccount:service-${data.google_project.project.number}@compute-system.iam.gserviceaccount.com"
+}
+
+resource "google_dataproc_cluster" "kms" {
+	name   = "dproc-cluster-test-%s"
+	region = "us-central1"
+
+	cluster_config {
+		encryption_config {
+			kms_key_name = "%s"
+		}
+	}
+}`, pid, rnd, kmsKey)
 }

@@ -24,13 +24,20 @@ description: |-
 Represents a SSL policy. SSL policies give you the ability to control the
 features of SSL that your SSL proxy or HTTPS load balancer negotiates.
 
+
 To get more information about SslPolicy, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/rest/v1/sslPolicies)
 * How-to Guides
     * [Using SSL Policies](https://cloud.google.com/compute/docs/load-balancing/ssl-policies)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=ssl_policy_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Ssl Policy Basic
+
 
 ```hcl
 resource "google_compute_ssl_policy" "prod-ssl-policy" {
@@ -56,6 +63,7 @@ resource "google_compute_ssl_policy" "custom-ssl-policy" {
 
 The following arguments are supported:
 
+
 * `name` -
   (Required)
   Name of the resource. Provided by the client when the resource is
@@ -69,9 +77,11 @@ The following arguments are supported:
 
 - - -
 
+
 * `description` -
   (Optional)
   An optional description of this resource.
+
 * `profile` -
   (Optional)
   Profile specifies the set of SSL features that can be used by the
@@ -79,17 +89,18 @@ The following arguments are supported:
   `COMPATIBLE`, `MODERN`, `RESTRICTED`, or `CUSTOM`. If using `CUSTOM`,
   the set of SSL features to enable must be specified in the
   `customFeatures` field.
-
   See the [official documentation](https://cloud.google.com/compute/docs/load-balancing/ssl-policies#profilefeaturesupport)
   for information on what cipher suites each profile provides. If
   `CUSTOM` is used, the `custom_features` attribute **must be set**.
   Default is `COMPATIBLE`.
+
 * `min_tls_version` -
   (Optional)
   The minimum version of SSL protocol that can be used by the clients
   to establish a connection with the load balancer. This can be one of
   `TLS_1_0`, `TLS_1_1`, `TLS_1_2`.
    Default is `TLS_1_0`.
+
 * `custom_features` -
   (Optional)
   Profile specifies the set of SSL features that can be used by the
@@ -97,12 +108,11 @@ The following arguments are supported:
   `COMPATIBLE`, `MODERN`, `RESTRICTED`, or `CUSTOM`. If using `CUSTOM`,
   the set of SSL features to enable must be specified in the
   `customFeatures` field.
-
   See the [official documentation](https://cloud.google.com/compute/docs/load-balancing/ssl-policies#profilefeaturesupport)
   for which ciphers are available to use. **Note**: this argument
   *must* be present when using the `CUSTOM` profile. This argument
   *must not* be present when using any other profile.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
 
@@ -110,10 +120,13 @@ The following arguments are supported:
 
 In addition to the arguments listed above, the following computed attributes are exported:
 
+
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
+
 * `enabled_features` -
   The list of features enabled in the SSL policy.
+
 * `fingerprint` -
   Fingerprint of this resource. A hash of the contents stored in this
   object. This field is used in optimistic locking.
@@ -138,3 +151,6 @@ $ terraform import google_compute_ssl_policy.default projects/{{project}}/global
 $ terraform import google_compute_ssl_policy.default {{project}}/{{name}}
 $ terraform import google_compute_ssl_policy.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

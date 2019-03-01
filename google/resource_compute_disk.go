@@ -25,7 +25,7 @@ import (
 
 	"github.com/hashicorp/terraform/helper/customdiff"
 	"github.com/hashicorp/terraform/helper/schema"
-	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 )
 
@@ -49,6 +49,13 @@ func isDiskShrinkage(old, new, _ interface{}) bool {
 // We cannot suppress the diff for the case when family name is not part of the image name since we can't
 // make a network call in a DiffSuppressFunc.
 func diskImageDiffSuppress(_, old, new string, _ *schema.ResourceData) bool {
+	// Understand that this function solves a messy problem ("how do we tell if the diff between two images
+	// is 'ForceNew-worthy', without making a network call?") in the best way we can: through a series of special
+	// cases and regexes.  If you find yourself here because you are trying to add a new special case,
+	// you are probably looking for the diskImageFamilyEquals function and its subfunctions.
+	// In order to keep this maintainable, we need to ensure that the positive and negative examples
+	// in resource_compute_disk_test.go are as complete as possible.
+
 	// 'old' is read from the API.
 	// It always has the format 'https://www.googleapis.com/compute/v1/projects/(%s)/global/images/(%s)'
 	matches := resolveImageLink.FindStringSubmatch(old)
@@ -166,8 +173,8 @@ func diskImageFamilyEquals(imageName, familyName string) bool {
 // e.g. image: ubuntu-1404-trusty-v20180122, family: ubuntu-1404-lts
 func suppressCanonicalFamilyDiff(imageName, familyName string) bool {
 	parts := canonicalUbuntuLtsImage.FindStringSubmatch(imageName)
-	if len(parts) == 2 {
-		f := fmt.Sprintf("ubuntu-%s-lts", parts[1])
+	if len(parts) == 3 {
+		f := fmt.Sprintf("ubuntu-%s%s-lts", parts[1], parts[2])
 		if f == familyName {
 			return true
 		}
@@ -216,32 +223,12 @@ func suppressWindowsSqlFamilyDiff(imageName, familyName string) bool {
 // e.g. image: windows-server-1709-dc-core-for-containers-v20180109, family: "windows-1709-core-for-containers
 func suppressWindowsFamilyDiff(imageName, familyName string) bool {
 	updatedFamilyString := strings.Replace(familyName, "windows-", "windows-server-", 1)
-	updatedFamilyString = strings.Replace(updatedFamilyString, "-core", "-dc-core", 1)
+	updatedImageName := strings.Replace(imageName, "-dc-", "-", 1)
 
-	if strings.Contains(imageName, updatedFamilyString) {
+	if strings.Contains(updatedImageName, updatedFamilyString) {
 		return true
 	}
 
-	return false
-}
-
-func diskEncryptionKeyDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
-	if strings.HasSuffix(k, "#") {
-		if old == "1" && new == "0" {
-			// If we have a disk_encryption_key_raw, we can trust that the diff will be handled there
-			// and we don't need to worry about it here.
-			return d.Get("disk_encryption_key_raw").(string) != ""
-		} else if new == "1" && old == "0" {
-			// This will be handled by diffing the 'raw_key' attribute.
-			return true
-		}
-	} else if strings.HasSuffix(k, "raw_key") {
-		disk_key := d.Get("disk_encryption_key_raw").(string)
-		return disk_key == old && old != "" && new == ""
-	} else if k == "disk_encryption_key_raw" {
-		disk_key := d.Get("disk_encryption_key.0.raw_key").(string)
-		return disk_key == old && old != "" && new == ""
-	}
 	return false
 }
 
@@ -261,6 +248,7 @@ func resourceComputeDisk() *schema.Resource {
 			Update: schema.DefaultTimeout(240 * time.Second),
 			Delete: schema.DefaultTimeout(240 * time.Second),
 		},
+
 		CustomizeDiff: customdiff.All(
 			customdiff.ForceNewIfChange("size", isDiskShrinkage)),
 
@@ -275,6 +263,37 @@ func resourceComputeDisk() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 			},
+			"disk_encryption_key": {
+				Type:     schema.TypeList,
+				Optional: true,
+				ForceNew: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"kms_key_self_link": {
+							Type:             schema.TypeString,
+							Optional:         true,
+							ForceNew:         true,
+							DiffSuppressFunc: compareSelfLinkRelativePaths,
+						},
+						"raw_key": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+						},
+						"sha256": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
+			},
+			"image": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				DiffSuppressFunc: diskImageDiffSuppress,
+			},
 			"labels": {
 				Type:     schema.TypeMap,
 				Optional: true,
@@ -285,44 +304,11 @@ func resourceComputeDisk() *schema.Resource {
 				Computed: true,
 				Optional: true,
 			},
-			"image": {
+			"snapshot": {
 				Type:             schema.TypeString,
-				Optional:         true,
-				ForceNew:         true,
-				DiffSuppressFunc: diskImageDiffSuppress,
-			},
-			"type": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
-				Default:  "pd-standard",
-			},
-			"zone": {
-				Type:             schema.TypeString,
-				Computed:         true,
 				Optional:         true,
 				ForceNew:         true,
 				DiffSuppressFunc: compareSelfLinkOrResourceName,
-			},
-			"disk_encryption_key": {
-				Type:             schema.TypeList,
-				Optional:         true,
-				ForceNew:         true,
-				DiffSuppressFunc: diskEncryptionKeyDiffSuppress,
-				MaxItems:         1,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"raw_key": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ForceNew: true,
-						},
-						"sha256": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-					},
-				},
 			},
 			"source_image_encryption_key": {
 				Type:     schema.TypeList,
@@ -331,6 +317,12 @@ func resourceComputeDisk() *schema.Resource {
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						"kms_key_self_link": {
+							Type:             schema.TypeString,
+							Optional:         true,
+							ForceNew:         true,
+							DiffSuppressFunc: compareSelfLinkRelativePaths,
+						},
 						"raw_key": {
 							Type:     schema.TypeString,
 							Optional: true,
@@ -342,12 +334,6 @@ func resourceComputeDisk() *schema.Resource {
 						},
 					},
 				},
-			},
-			"snapshot": {
-				Type:             schema.TypeString,
-				Optional:         true,
-				ForceNew:         true,
-				DiffSuppressFunc: linkDiffSuppress,
 			},
 			"source_snapshot_encryption_key": {
 				Type:     schema.TypeList,
@@ -356,6 +342,12 @@ func resourceComputeDisk() *schema.Resource {
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						"kms_key_self_link": {
+							Type:             schema.TypeString,
+							Optional:         true,
+							ForceNew:         true,
+							DiffSuppressFunc: compareSelfLinkRelativePaths,
+						},
 						"raw_key": {
 							Type:     schema.TypeString,
 							Optional: true,
@@ -367,6 +359,20 @@ func resourceComputeDisk() *schema.Resource {
 						},
 					},
 				},
+			},
+			"type": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				DiffSuppressFunc: compareSelfLinkOrResourceName,
+				Default:          "pd-standard",
+			},
+			"zone": {
+				Type:             schema.TypeString,
+				Computed:         true,
+				Optional:         true,
+				ForceNew:         true,
+				DiffSuppressFunc: compareSelfLinkOrResourceName,
 			},
 			"creation_timestamp": {
 				Type:     schema.TypeString,
@@ -396,22 +402,22 @@ func resourceComputeDisk() *schema.Resource {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Schema{
-					Type: schema.TypeString,
+					Type:             schema.TypeString,
+					DiffSuppressFunc: compareSelfLinkOrResourceName,
 				},
 			},
-			"disk_encryption_key_raw": &schema.Schema{
-				Type:             schema.TypeString,
-				Optional:         true,
-				ForceNew:         true,
-				Sensitive:        true,
-				DiffSuppressFunc: diskEncryptionKeyDiffSuppress,
-				Deprecated:       "Use disk_encryption_key.raw_key instead.",
+			"disk_encryption_key_raw": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				ForceNew:  true,
+				Sensitive: true,
+				Removed:   "Use disk_encryption_key.raw_key instead.",
 			},
 
-			"disk_encryption_key_sha256": &schema.Schema{
-				Type:       schema.TypeString,
-				Computed:   true,
-				Deprecated: "Use disk_encryption_key.sha256 instead.",
+			"disk_encryption_key_sha256": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Removed:  "Use disk_encryption_key.sha256 instead.",
 			},
 			"project": {
 				Type:     schema.TypeString,
@@ -430,12 +436,13 @@ func resourceComputeDisk() *schema.Resource {
 func resourceComputeDiskCreate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	project, err := getProject(d, config)
+	obj := make(map[string]interface{})
+	labelFingerprintProp, err := expandComputeDiskLabelFingerprint(d.Get("label_fingerprint"), d, config)
 	if err != nil {
 		return err
+	} else if v, ok := d.GetOkExists("label_fingerprint"); !isEmptyValue(reflect.ValueOf(labelFingerprintProp)) && (ok || !reflect.DeepEqual(v, labelFingerprintProp)) {
+		obj["labelFingerprint"] = labelFingerprintProp
 	}
-
-	obj := make(map[string]interface{})
 	descriptionProp, err := expandComputeDiskDescription(d.Get("description"), d, config)
 	if err != nil {
 		return err
@@ -460,17 +467,17 @@ func resourceComputeDiskCreate(d *schema.ResourceData, meta interface{}) error {
 	} else if v, ok := d.GetOkExists("size"); !isEmptyValue(reflect.ValueOf(sizeGbProp)) && (ok || !reflect.DeepEqual(v, sizeGbProp)) {
 		obj["sizeGb"] = sizeGbProp
 	}
-	sourceImageProp, err := expandComputeDiskImage(d.Get("image"), d, config)
-	if err != nil {
-		return err
-	} else if v, ok := d.GetOkExists("image"); !isEmptyValue(reflect.ValueOf(sourceImageProp)) && (ok || !reflect.DeepEqual(v, sourceImageProp)) {
-		obj["sourceImage"] = sourceImageProp
-	}
 	typeProp, err := expandComputeDiskType(d.Get("type"), d, config)
 	if err != nil {
 		return err
 	} else if v, ok := d.GetOkExists("type"); !isEmptyValue(reflect.ValueOf(typeProp)) && (ok || !reflect.DeepEqual(v, typeProp)) {
 		obj["type"] = typeProp
+	}
+	sourceImageProp, err := expandComputeDiskImage(d.Get("image"), d, config)
+	if err != nil {
+		return err
+	} else if v, ok := d.GetOkExists("image"); !isEmptyValue(reflect.ValueOf(sourceImageProp)) && (ok || !reflect.DeepEqual(v, sourceImageProp)) {
+		obj["sourceImage"] = sourceImageProp
 	}
 	zoneProp, err := expandComputeDiskZone(d.Get("zone"), d, config)
 	if err != nil {
@@ -478,17 +485,17 @@ func resourceComputeDiskCreate(d *schema.ResourceData, meta interface{}) error {
 	} else if v, ok := d.GetOkExists("zone"); !isEmptyValue(reflect.ValueOf(zoneProp)) && (ok || !reflect.DeepEqual(v, zoneProp)) {
 		obj["zone"] = zoneProp
 	}
-	diskEncryptionKeyProp, err := expandComputeDiskDiskEncryptionKey(d.Get("disk_encryption_key"), d, config)
-	if err != nil {
-		return err
-	} else if v, ok := d.GetOkExists("disk_encryption_key"); !isEmptyValue(reflect.ValueOf(diskEncryptionKeyProp)) && (ok || !reflect.DeepEqual(v, diskEncryptionKeyProp)) {
-		obj["diskEncryptionKey"] = diskEncryptionKeyProp
-	}
 	sourceImageEncryptionKeyProp, err := expandComputeDiskSourceImageEncryptionKey(d.Get("source_image_encryption_key"), d, config)
 	if err != nil {
 		return err
 	} else if v, ok := d.GetOkExists("source_image_encryption_key"); !isEmptyValue(reflect.ValueOf(sourceImageEncryptionKeyProp)) && (ok || !reflect.DeepEqual(v, sourceImageEncryptionKeyProp)) {
 		obj["sourceImageEncryptionKey"] = sourceImageEncryptionKeyProp
+	}
+	diskEncryptionKeyProp, err := expandComputeDiskDiskEncryptionKey(d.Get("disk_encryption_key"), d, config)
+	if err != nil {
+		return err
+	} else if v, ok := d.GetOkExists("disk_encryption_key"); !isEmptyValue(reflect.ValueOf(diskEncryptionKeyProp)) && (ok || !reflect.DeepEqual(v, diskEncryptionKeyProp)) {
+		obj["diskEncryptionKey"] = diskEncryptionKeyProp
 	}
 	sourceSnapshotProp, err := expandComputeDiskSnapshot(d.Get("snapshot"), d, config)
 	if err != nil {
@@ -514,7 +521,7 @@ func resourceComputeDiskCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	log.Printf("[DEBUG] Creating new Disk: %#v", obj)
-	res, err := Post(config, url, obj)
+	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating Disk: %s", err)
 	}
@@ -526,6 +533,10 @@ func resourceComputeDiskCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 	d.SetId(id)
 
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
 	op := &compute.Operation{}
 	err = Convert(res, op)
 	if err != nil {
@@ -550,17 +561,12 @@ func resourceComputeDiskCreate(d *schema.ResourceData, meta interface{}) error {
 func resourceComputeDiskRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-
 	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/zones/{{zone}}/disks/{{name}}")
 	if err != nil {
 		return err
 	}
 
-	res, err := Get(config, url)
+	res, err := sendRequest(config, "GET", url, nil)
 	if err != nil {
 		return handleNotFoundError(err, d, fmt.Sprintf("ComputeDisk %q", d.Id()))
 	}
@@ -570,64 +576,69 @@ func resourceComputeDiskRead(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	if err := d.Set("label_fingerprint", flattenComputeDiskLabelFingerprint(res["labelFingerprint"])); err != nil {
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("creation_timestamp", flattenComputeDiskCreationTimestamp(res["creationTimestamp"])); err != nil {
+
+	if err := d.Set("label_fingerprint", flattenComputeDiskLabelFingerprint(res["labelFingerprint"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("description", flattenComputeDiskDescription(res["description"])); err != nil {
+	if err := d.Set("creation_timestamp", flattenComputeDiskCreationTimestamp(res["creationTimestamp"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("last_attach_timestamp", flattenComputeDiskLastAttachTimestamp(res["lastAttachTimestamp"])); err != nil {
+	if err := d.Set("description", flattenComputeDiskDescription(res["description"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("last_detach_timestamp", flattenComputeDiskLastDetachTimestamp(res["lastDetachTimestamp"])); err != nil {
+	if err := d.Set("last_attach_timestamp", flattenComputeDiskLastAttachTimestamp(res["lastAttachTimestamp"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("labels", flattenComputeDiskLabels(res["labels"])); err != nil {
+	if err := d.Set("last_detach_timestamp", flattenComputeDiskLastDetachTimestamp(res["lastDetachTimestamp"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("name", flattenComputeDiskName(res["name"])); err != nil {
+	if err := d.Set("labels", flattenComputeDiskLabels(res["labels"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("size", flattenComputeDiskSize(res["sizeGb"])); err != nil {
+	if err := d.Set("name", flattenComputeDiskName(res["name"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("image", flattenComputeDiskImage(res["sourceImage"])); err != nil {
+	if err := d.Set("size", flattenComputeDiskSize(res["sizeGb"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("type", flattenComputeDiskType(res["type"])); err != nil {
+	if err := d.Set("users", flattenComputeDiskUsers(res["users"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("users", flattenComputeDiskUsers(res["users"])); err != nil {
+	if err := d.Set("type", flattenComputeDiskType(res["type"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("zone", flattenComputeDiskZone(res["zone"])); err != nil {
+	if err := d.Set("image", flattenComputeDiskImage(res["sourceImage"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("disk_encryption_key", flattenComputeDiskDiskEncryptionKey(res["diskEncryptionKey"])); err != nil {
+	if err := d.Set("zone", flattenComputeDiskZone(res["zone"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("source_image_encryption_key", flattenComputeDiskSourceImageEncryptionKey(res["sourceImageEncryptionKey"])); err != nil {
+	if err := d.Set("source_image_encryption_key", flattenComputeDiskSourceImageEncryptionKey(res["sourceImageEncryptionKey"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("source_image_id", flattenComputeDiskSourceImageId(res["sourceImageId"])); err != nil {
+	if err := d.Set("source_image_id", flattenComputeDiskSourceImageId(res["sourceImageId"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("snapshot", flattenComputeDiskSnapshot(res["sourceSnapshot"])); err != nil {
+	if err := d.Set("disk_encryption_key", flattenComputeDiskDiskEncryptionKey(res["diskEncryptionKey"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("source_snapshot_encryption_key", flattenComputeDiskSourceSnapshotEncryptionKey(res["sourceSnapshotEncryptionKey"])); err != nil {
+	if err := d.Set("snapshot", flattenComputeDiskSnapshot(res["sourceSnapshot"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
-	if err := d.Set("source_snapshot_id", flattenComputeDiskSourceSnapshotId(res["sourceSnapshotId"])); err != nil {
+	if err := d.Set("source_snapshot_encryption_key", flattenComputeDiskSourceSnapshotEncryptionKey(res["sourceSnapshotEncryptionKey"], d)); err != nil {
+		return fmt.Errorf("Error reading Disk: %s", err)
+	}
+	if err := d.Set("source_snapshot_id", flattenComputeDiskSourceSnapshotId(res["sourceSnapshotId"], d)); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
 	if err := d.Set("self_link", ConvertSelfLinkToV1(res["selfLink"].(string))); err != nil {
-		return fmt.Errorf("Error reading Disk: %s", err)
-	}
-	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading Disk: %s", err)
 	}
 
@@ -637,21 +648,16 @@ func resourceComputeDiskRead(d *schema.ResourceData, meta interface{}) error {
 func resourceComputeDiskUpdate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-
-	var url string
-	var res map[string]interface{}
-	op := &compute.Operation{}
-
 	d.Partial(true)
 
 	if d.HasChange("label_fingerprint") || d.HasChange("labels") {
 		obj := make(map[string]interface{})
-		labelFingerprintProp := d.Get("label_fingerprint")
-		obj["labelFingerprint"] = labelFingerprintProp
+		labelFingerprintProp, err := expandComputeDiskLabelFingerprint(d.Get("label_fingerprint"), d, config)
+		if err != nil {
+			return err
+		} else if v, ok := d.GetOkExists("label_fingerprint"); !isEmptyValue(reflect.ValueOf(v)) && (ok || !reflect.DeepEqual(v, labelFingerprintProp)) {
+			obj["labelFingerprint"] = labelFingerprintProp
+		}
 		labelsProp, err := expandComputeDiskLabels(d.Get("labels"), d, config)
 		if err != nil {
 			return err
@@ -659,15 +665,20 @@ func resourceComputeDiskUpdate(d *schema.ResourceData, meta interface{}) error {
 			obj["labels"] = labelsProp
 		}
 
-		url, err = replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/zones/{{zone}}/disks/{{name}}/setLabels")
+		url, err := replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/zones/{{zone}}/disks/{{name}}/setLabels")
 		if err != nil {
 			return err
 		}
-		res, err = sendRequest(config, "POST", url, obj)
+		res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
 			return fmt.Errorf("Error updating Disk %q: %s", d.Id(), err)
 		}
 
+		project, err := getProject(d, config)
+		if err != nil {
+			return err
+		}
+		op := &compute.Operation{}
 		err = Convert(res, op)
 		if err != nil {
 			return err
@@ -693,15 +704,20 @@ func resourceComputeDiskUpdate(d *schema.ResourceData, meta interface{}) error {
 			obj["sizeGb"] = sizeGbProp
 		}
 
-		url, err = replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/zones/{{zone}}/disks/{{name}}/resize")
+		url, err := replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/zones/{{zone}}/disks/{{name}}/resize")
 		if err != nil {
 			return err
 		}
-		res, err = sendRequest(config, "POST", url, obj)
+		res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
 			return fmt.Errorf("Error updating Disk %q: %s", d.Id(), err)
 		}
 
+		project, err := getProject(d, config)
+		if err != nil {
+			return err
+		}
+		op := &compute.Operation{}
 		err = Convert(res, op)
 		if err != nil {
 			return err
@@ -726,41 +742,43 @@ func resourceComputeDiskUpdate(d *schema.ResourceData, meta interface{}) error {
 func resourceComputeDiskDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-
 	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/zones/{{zone}}/disks/{{name}}")
 	if err != nil {
 		return err
 	}
 
+	var obj map[string]interface{}
+	readRes, err := sendRequest(config, "GET", url, nil)
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("ComputeDisk %q", d.Id()))
+	}
+
 	// if disks are attached, they must be detached before the disk can be deleted
-	if instances, ok := d.Get("users").([]interface{}); ok {
+	if v, ok := readRes["instances"].([]interface{}); ok {
 		type detachArgs struct{ project, zone, instance, deviceName string }
 		var detachCalls []detachArgs
-		self := d.Get("self_link").(string)
-		for _, instance := range instances {
-			if !computeDiskUserRegex.MatchString(instance.(string)) {
+
+		for _, instance := range convertStringArr(v) {
+			self := d.Get("self_link").(string)
+			if !computeDiskUserRegex.MatchString(instance) {
 				return fmt.Errorf("Unknown user %q of disk %q", instance, self)
 			}
-			matches := computeDiskUserRegex.FindStringSubmatch(instance.(string))
+			matches := computeDiskUserRegex.FindStringSubmatch(instance)
 			instanceProject := matches[1]
 			instanceZone := matches[2]
 			instanceName := matches[3]
 			i, err := config.clientCompute.Instances.Get(instanceProject, instanceZone, instanceName).Do()
 			if err != nil {
 				if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == 404 {
-					log.Printf("[WARN] instance %q not found, not bothering to detach disks", instance.(string))
+					log.Printf("[WARN] instance %q not found, not bothering to detach disks", instance)
 					continue
 				}
-				return fmt.Errorf("Error retrieving instance %s: %s", instance.(string), err.Error())
+				return fmt.Errorf("Error retrieving instance %s: %s", instance, err.Error())
 			}
 			for _, disk := range i.Disks {
 				if disk.Source == self {
 					detachCalls = append(detachCalls, detachArgs{
-						project:    project,
+						project:    instanceProject,
 						zone:       GetResourceNameFromSelfLink(i.Zone),
 						instance:   i.Name,
 						deviceName: disk.DeviceName,
@@ -768,6 +786,7 @@ func resourceComputeDiskDelete(d *schema.ResourceData, meta interface{}) error {
 				}
 			}
 		}
+
 		for _, call := range detachCalls {
 			op, err := config.clientCompute.Instances.DetachDisk(call.project, call.zone, call.instance, call.deviceName).Do()
 			if err != nil {
@@ -786,11 +805,15 @@ func resourceComputeDiskDelete(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 	log.Printf("[DEBUG] Deleting Disk %q", d.Id())
-	res, err := Delete(config, url)
+	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "Disk")
 	}
 
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
 	op := &compute.Operation{}
 	err = Convert(res, op)
 	if err != nil {
@@ -811,7 +834,9 @@ func resourceComputeDiskDelete(d *schema.ResourceData, meta interface{}) error {
 
 func resourceComputeDiskImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	config := meta.(*Config)
-	parseImportId([]string{"projects/(?P<project>[^/]+)/zones/(?P<zone>[^/]+)/disks/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config)
+	if err := parseImportId([]string{"projects/(?P<project>[^/]+)/zones/(?P<zone>[^/]+)/disks/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<zone>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+		return nil, err
+	}
 
 	// Replace import id for the resource id
 	id, err := replaceVars(d, config, "{{name}}")
@@ -819,65 +844,39 @@ func resourceComputeDiskImport(d *schema.ResourceData, meta interface{}) ([]*sch
 		return nil, fmt.Errorf("Error constructing id: %s", err)
 	}
 	d.SetId(id)
-	// In the end, it's possible that someone has tried to import
-	// a disk using only the region.  To find out what zone the
-	// disk is in, we need to check every zone in the region, to
-	// see if we can find a disk with the same name.  This will
-	// find the first disk in the specified region with a matching
-	// name.  There might be multiple matching disks - we're not
-	// considering that an error case here.  We don't check for it.
-	if zone, err := getZone(d, config); err != nil || zone == "" {
-		project, err := getProject(d, config)
-		if err != nil {
-			return nil, err
-		}
-		region, err := getRegion(d, config)
-		if err != nil {
-			return nil, err
-		}
-
-		getDisk := func(zone string) (interface{}, error) {
-			return config.clientCompute.Disks.Get(project, zone, d.Id()).Do()
-		}
-		resource, err := getZonalResourceFromRegion(getDisk, region, config.clientCompute, project)
-		if err != nil {
-			return nil, err
-		}
-		d.Set("zone", resource.(*compute.Disk).Zone)
-	}
 
 	return []*schema.ResourceData{d}, nil
 }
 
-func flattenComputeDiskLabelFingerprint(v interface{}) interface{} {
+func flattenComputeDiskLabelFingerprint(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskCreationTimestamp(v interface{}) interface{} {
+func flattenComputeDiskCreationTimestamp(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskDescription(v interface{}) interface{} {
+func flattenComputeDiskDescription(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskLastAttachTimestamp(v interface{}) interface{} {
+func flattenComputeDiskLastAttachTimestamp(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskLastDetachTimestamp(v interface{}) interface{} {
+func flattenComputeDiskLastDetachTimestamp(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskLabels(v interface{}) interface{} {
+func flattenComputeDiskLabels(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskName(v interface{}) interface{} {
+func flattenComputeDiskName(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskSize(v interface{}) interface{} {
+func flattenComputeDiskSize(v interface{}, d *schema.ResourceData) interface{} {
 	// Handles the string fixed64 format
 	if strVal, ok := v.(string); ok {
 		if intVal, err := strconv.ParseInt(strVal, 10, 64); err == nil {
@@ -887,98 +886,135 @@ func flattenComputeDiskSize(v interface{}) interface{} {
 	return v
 }
 
-func flattenComputeDiskImage(v interface{}) interface{} {
-	return v
+func flattenComputeDiskUsers(v interface{}, d *schema.ResourceData) interface{} {
+	if v == nil {
+		return v
+	}
+	return convertAndMapStringArr(v.([]interface{}), ConvertSelfLinkToV1)
 }
 
-func flattenComputeDiskType(v interface{}) interface{} {
+func flattenComputeDiskType(v interface{}, d *schema.ResourceData) interface{} {
 	if v == nil {
 		return v
 	}
 	return NameFromSelfLinkStateFunc(v)
 }
 
-func flattenComputeDiskUsers(v interface{}) interface{} {
+func flattenComputeDiskImage(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskZone(v interface{}) interface{} {
+func flattenComputeDiskZone(v interface{}, d *schema.ResourceData) interface{} {
 	if v == nil {
 		return v
 	}
 	return NameFromSelfLinkStateFunc(v)
 }
 
-func flattenComputeDiskDiskEncryptionKey(v interface{}) interface{} {
+func flattenComputeDiskSourceImageEncryptionKey(v interface{}, d *schema.ResourceData) interface{} {
 	if v == nil {
 		return nil
 	}
 	original := v.(map[string]interface{})
+	if len(original) == 0 {
+		return nil
+	}
 	transformed := make(map[string]interface{})
 	transformed["raw_key"] =
-		flattenComputeDiskDiskEncryptionKeyRawKey(original["rawKey"])
+		flattenComputeDiskSourceImageEncryptionKeyRawKey(original["rawKey"], d)
 	transformed["sha256"] =
-		flattenComputeDiskDiskEncryptionKeySha256(original["sha256"])
+		flattenComputeDiskSourceImageEncryptionKeySha256(original["sha256"], d)
+	transformed["kms_key_self_link"] =
+		flattenComputeDiskSourceImageEncryptionKeyKmsKeySelfLink(original["kmsKeyName"], d)
 	return []interface{}{transformed}
 }
-func flattenComputeDiskDiskEncryptionKeyRawKey(v interface{}) interface{} {
+func flattenComputeDiskSourceImageEncryptionKeyRawKey(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskDiskEncryptionKeySha256(v interface{}) interface{} {
+func flattenComputeDiskSourceImageEncryptionKeySha256(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskSourceImageEncryptionKey(v interface{}) interface{} {
+func flattenComputeDiskSourceImageEncryptionKeyKmsKeySelfLink(v interface{}, d *schema.ResourceData) interface{} {
+	return v
+}
+
+func flattenComputeDiskSourceImageId(v interface{}, d *schema.ResourceData) interface{} {
+	return v
+}
+
+func flattenComputeDiskDiskEncryptionKey(v interface{}, d *schema.ResourceData) interface{} {
 	if v == nil {
 		return nil
 	}
 	original := v.(map[string]interface{})
+	if len(original) == 0 {
+		return nil
+	}
 	transformed := make(map[string]interface{})
 	transformed["raw_key"] =
-		flattenComputeDiskSourceImageEncryptionKeyRawKey(original["rawKey"])
+		flattenComputeDiskDiskEncryptionKeyRawKey(original["rawKey"], d)
 	transformed["sha256"] =
-		flattenComputeDiskSourceImageEncryptionKeySha256(original["sha256"])
+		flattenComputeDiskDiskEncryptionKeySha256(original["sha256"], d)
+	transformed["kms_key_self_link"] =
+		flattenComputeDiskDiskEncryptionKeyKmsKeySelfLink(original["kmsKeyName"], d)
 	return []interface{}{transformed}
 }
-func flattenComputeDiskSourceImageEncryptionKeyRawKey(v interface{}) interface{} {
+func flattenComputeDiskDiskEncryptionKeyRawKey(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskSourceImageEncryptionKeySha256(v interface{}) interface{} {
+func flattenComputeDiskDiskEncryptionKeySha256(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskSourceImageId(v interface{}) interface{} {
+func flattenComputeDiskDiskEncryptionKeyKmsKeySelfLink(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskSnapshot(v interface{}) interface{} {
-	return v
+func flattenComputeDiskSnapshot(v interface{}, d *schema.ResourceData) interface{} {
+	if v == nil {
+		return v
+	}
+	return ConvertSelfLinkToV1(v.(string))
 }
 
-func flattenComputeDiskSourceSnapshotEncryptionKey(v interface{}) interface{} {
+func flattenComputeDiskSourceSnapshotEncryptionKey(v interface{}, d *schema.ResourceData) interface{} {
 	if v == nil {
 		return nil
 	}
 	original := v.(map[string]interface{})
+	if len(original) == 0 {
+		return nil
+	}
 	transformed := make(map[string]interface{})
 	transformed["raw_key"] =
-		flattenComputeDiskSourceSnapshotEncryptionKeyRawKey(original["rawKey"])
+		flattenComputeDiskSourceSnapshotEncryptionKeyRawKey(original["rawKey"], d)
+	transformed["kms_key_self_link"] =
+		flattenComputeDiskSourceSnapshotEncryptionKeyKmsKeySelfLink(original["kmsKeyName"], d)
 	transformed["sha256"] =
-		flattenComputeDiskSourceSnapshotEncryptionKeySha256(original["sha256"])
+		flattenComputeDiskSourceSnapshotEncryptionKeySha256(original["sha256"], d)
 	return []interface{}{transformed}
 }
-func flattenComputeDiskSourceSnapshotEncryptionKeyRawKey(v interface{}) interface{} {
+func flattenComputeDiskSourceSnapshotEncryptionKeyRawKey(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskSourceSnapshotEncryptionKeySha256(v interface{}) interface{} {
+func flattenComputeDiskSourceSnapshotEncryptionKeyKmsKeySelfLink(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeDiskSourceSnapshotId(v interface{}) interface{} {
+func flattenComputeDiskSourceSnapshotEncryptionKeySha256(v interface{}, d *schema.ResourceData) interface{} {
 	return v
+}
+
+func flattenComputeDiskSourceSnapshotId(v interface{}, d *schema.ResourceData) interface{} {
+	return v
+}
+
+func expandComputeDiskLabelFingerprint(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
 }
 
 func expandComputeDiskDescription(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
@@ -1004,11 +1040,15 @@ func expandComputeDiskSize(v interface{}, d *schema.ResourceData, config *Config
 	return v, nil
 }
 
-func expandComputeDiskImage(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
-	return v, nil
+func expandComputeDiskType(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	f, err := parseZonalFieldValue("diskTypes", v.(string), "project", "zone", d, config, true)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid value for type: %s", err)
+	}
+	return f.RelativeLink(), nil
 }
 
-func expandComputeDiskType(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+func expandComputeDiskImage(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
 	return v, nil
 }
 
@@ -1020,51 +1060,147 @@ func expandComputeDiskZone(v interface{}, d *schema.ResourceData, config *Config
 	return f.RelativeLink(), nil
 }
 
-func expandComputeDiskDiskEncryptionKey(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
-	l := v.([]interface{})
-	req := make([]interface{}, 0, 1)
-	if len(l) == 1 {
-		// There is a value
-		outMap := make(map[string]interface{})
-		outMap["rawKey"] = l[0].(map[string]interface{})["raw_key"]
-		req = append(req, outMap)
-	} else {
-		// Check alternative setting?
-		if altV, ok := d.GetOk("disk_encryption_key_raw"); ok && altV != "" {
-			outMap := make(map[string]interface{})
-			outMap["rawKey"] = altV
-			req = append(req, outMap)
-		}
-	}
-	return req, nil
-}
-
 func expandComputeDiskSourceImageEncryptionKey(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
 	l := v.([]interface{})
-	req := make([]interface{}, 0, 1)
-	if len(l) == 1 {
-		// There is a value
-		outMap := make(map[string]interface{})
-		outMap["rawKey"] = l[0].(map[string]interface{})["raw_key"]
-		req = append(req, outMap)
+	if len(l) == 0 || l[0] == nil {
+		return nil, nil
 	}
-	return req, nil
+	raw := l[0]
+	original := raw.(map[string]interface{})
+	transformed := make(map[string]interface{})
+
+	transformedRawKey, err := expandComputeDiskSourceImageEncryptionKeyRawKey(original["raw_key"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedRawKey); val.IsValid() && !isEmptyValue(val) {
+		transformed["rawKey"] = transformedRawKey
+	}
+
+	transformedSha256, err := expandComputeDiskSourceImageEncryptionKeySha256(original["sha256"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedSha256); val.IsValid() && !isEmptyValue(val) {
+		transformed["sha256"] = transformedSha256
+	}
+
+	transformedKmsKeySelfLink, err := expandComputeDiskSourceImageEncryptionKeyKmsKeySelfLink(original["kms_key_self_link"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedKmsKeySelfLink); val.IsValid() && !isEmptyValue(val) {
+		transformed["kmsKeyName"] = transformedKmsKeySelfLink
+	}
+
+	return transformed, nil
+}
+
+func expandComputeDiskSourceImageEncryptionKeyRawKey(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
+}
+
+func expandComputeDiskSourceImageEncryptionKeySha256(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
+}
+
+func expandComputeDiskSourceImageEncryptionKeyKmsKeySelfLink(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
+}
+
+func expandComputeDiskDiskEncryptionKey(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	l := v.([]interface{})
+	if len(l) == 0 || l[0] == nil {
+		return nil, nil
+	}
+	raw := l[0]
+	original := raw.(map[string]interface{})
+	transformed := make(map[string]interface{})
+
+	transformedRawKey, err := expandComputeDiskDiskEncryptionKeyRawKey(original["raw_key"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedRawKey); val.IsValid() && !isEmptyValue(val) {
+		transformed["rawKey"] = transformedRawKey
+	}
+
+	transformedSha256, err := expandComputeDiskDiskEncryptionKeySha256(original["sha256"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedSha256); val.IsValid() && !isEmptyValue(val) {
+		transformed["sha256"] = transformedSha256
+	}
+
+	transformedKmsKeySelfLink, err := expandComputeDiskDiskEncryptionKeyKmsKeySelfLink(original["kms_key_self_link"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedKmsKeySelfLink); val.IsValid() && !isEmptyValue(val) {
+		transformed["kmsKeyName"] = transformedKmsKeySelfLink
+	}
+
+	return transformed, nil
+}
+
+func expandComputeDiskDiskEncryptionKeyRawKey(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
+}
+
+func expandComputeDiskDiskEncryptionKeySha256(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
+}
+
+func expandComputeDiskDiskEncryptionKeyKmsKeySelfLink(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
 }
 
 func expandComputeDiskSnapshot(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
-	return v, nil
+	f, err := parseGlobalFieldValue("snapshots", v.(string), "project", d, config, true)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid value for snapshot: %s", err)
+	}
+	return f.RelativeLink(), nil
 }
 
 func expandComputeDiskSourceSnapshotEncryptionKey(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
 	l := v.([]interface{})
-	req := make([]interface{}, 0, 1)
-	if len(l) == 1 {
-		// There is a value
-		outMap := make(map[string]interface{})
-		outMap["rawKey"] = l[0].(map[string]interface{})["raw_key"]
-		req = append(req, outMap)
+	if len(l) == 0 || l[0] == nil {
+		return nil, nil
 	}
-	return req, nil
+	raw := l[0]
+	original := raw.(map[string]interface{})
+	transformed := make(map[string]interface{})
+
+	transformedRawKey, err := expandComputeDiskSourceSnapshotEncryptionKeyRawKey(original["raw_key"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedRawKey); val.IsValid() && !isEmptyValue(val) {
+		transformed["rawKey"] = transformedRawKey
+	}
+
+	transformedKmsKeySelfLink, err := expandComputeDiskSourceSnapshotEncryptionKeyKmsKeySelfLink(original["kms_key_self_link"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedKmsKeySelfLink); val.IsValid() && !isEmptyValue(val) {
+		transformed["kmsKeyName"] = transformedKmsKeySelfLink
+	}
+
+	transformedSha256, err := expandComputeDiskSourceSnapshotEncryptionKeySha256(original["sha256"], d, config)
+	if err != nil {
+		return nil, err
+	} else if val := reflect.ValueOf(transformedSha256); val.IsValid() && !isEmptyValue(val) {
+		transformed["sha256"] = transformedSha256
+	}
+
+	return transformed, nil
+}
+
+func expandComputeDiskSourceSnapshotEncryptionKeyRawKey(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
+}
+
+func expandComputeDiskSourceSnapshotEncryptionKeyKmsKeySelfLink(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
+}
+
+func expandComputeDiskSourceSnapshotEncryptionKeySha256(v interface{}, d *schema.ResourceData, config *Config) (interface{}, error) {
+	return v, nil
 }
 
 func resourceComputeDiskEncoder(d *schema.ResourceData, meta interface{}, obj map[string]interface{}) (map[string]interface{}, error) {
@@ -1074,16 +1210,26 @@ func resourceComputeDiskEncoder(d *schema.ResourceData, meta interface{}, obj ma
 	if err != nil {
 		return nil, err
 	}
-
 	// Get the zone
 	z, err := getZone(d, config)
 	if err != nil {
 		return nil, err
 	}
-
 	zone, err := config.clientCompute.Zones.Get(project, z).Do()
 	if err != nil {
 		return nil, err
+	}
+
+	if v, ok := d.GetOk("type"); ok {
+		log.Printf("[DEBUG] Loading disk type: %s", v.(string))
+		diskType, err := readDiskType(config, zone, project, v.(string))
+		if err != nil {
+			return nil, fmt.Errorf(
+				"Error loading disk type '%s': %s",
+				v.(string), err)
+		}
+
+		obj["type"] = diskType.SelfLink
 	}
 
 	if v, ok := d.GetOk("image"); ok {
@@ -1099,37 +1245,6 @@ func resourceComputeDiskEncoder(d *schema.ResourceData, meta interface{}, obj ma
 		log.Printf("[DEBUG] Image name resolved to: %s", imageUrl)
 	}
 
-	if v, ok := d.GetOk("type"); ok {
-		log.Printf("[DEBUG] Loading disk type: %s", v.(string))
-		diskType, err := readDiskType(config, zone, project, v.(string))
-		if err != nil {
-			return nil, fmt.Errorf(
-				"Error loading disk type '%s': %s",
-				v.(string), err)
-		}
-
-		obj["type"] = diskType.SelfLink
-	}
-
-	if v, ok := d.GetOk("snapshot"); ok {
-		snapshotName := v.(string)
-		match, _ := regexp.MatchString("^https://www.googleapis.com/compute", snapshotName)
-		if match {
-			obj["sourceSnapshot"] = snapshotName
-		} else {
-			log.Printf("[DEBUG] Loading snapshot: %s", snapshotName)
-			snapshotData, err := config.clientCompute.Snapshots.Get(
-				project, snapshotName).Do()
-
-			if err != nil {
-				return nil, fmt.Errorf(
-					"Error loading snapshot '%s': %s",
-					snapshotName, err)
-			}
-			obj["sourceSnapshot"] = snapshotData.SelfLink
-		}
-	}
-
 	return obj, nil
 }
 
@@ -1140,10 +1255,13 @@ func resourceComputeDiskDecoder(d *schema.ResourceData, meta interface{}, res ma
 		// The raw key won't be returned, so we need to use the original.
 		transformed["rawKey"] = d.Get("disk_encryption_key.0.raw_key")
 		transformed["sha256"] = original["sha256"]
-		if v, ok := d.GetOk("disk_encryption_key_raw"); ok {
-			transformed["rawKey"] = v
+
+		if kmsKeyName, ok := original["kmsKeyName"]; ok {
+			// The response for crypto keys often includes the version of the key which needs to be removed
+			// format: projects/<project>/locations/<region>/keyRings/<keyring>/cryptoKeys/<key>/cryptoKeyVersions/1
+			transformed["kmsKeyName"] = strings.Split(kmsKeyName.(string), "/cryptoKeyVersions")[0]
 		}
-		d.Set("disk_encryption_key_sha256", original["sha256"])
+
 		res["diskEncryptionKey"] = transformed
 	}
 
@@ -1153,6 +1271,13 @@ func resourceComputeDiskDecoder(d *schema.ResourceData, meta interface{}, res ma
 		// The raw key won't be returned, so we need to use the original.
 		transformed["rawKey"] = d.Get("source_image_encryption_key.0.raw_key")
 		transformed["sha256"] = original["sha256"]
+
+		if kmsKeyName, ok := original["kmsKeyName"]; ok {
+			// The response for crypto keys often includes the version of the key which needs to be removed
+			// format: projects/<project>/locations/<region>/keyRings/<keyring>/cryptoKeys/<key>/cryptoKeyVersions/1
+			transformed["kmsKeyName"] = strings.Split(kmsKeyName.(string), "/cryptoKeyVersions")[0]
+		}
+
 		res["sourceImageEncryptionKey"] = transformed
 	}
 
@@ -1162,6 +1287,13 @@ func resourceComputeDiskDecoder(d *schema.ResourceData, meta interface{}, res ma
 		// The raw key won't be returned, so we need to use the original.
 		transformed["rawKey"] = d.Get("source_snapshot_encryption_key.0.raw_key")
 		transformed["sha256"] = original["sha256"]
+
+		if kmsKeyName, ok := original["kmsKeyName"]; ok {
+			// The response for crypto keys often includes the version of the key which needs to be removed
+			// format: projects/<project>/locations/<region>/keyRings/<keyring>/cryptoKeys/<key>/cryptoKeyVersions/1
+			transformed["kmsKeyName"] = strings.Split(kmsKeyName.(string), "/cryptoKeyVersions")[0]
+		}
+
 		res["sourceSnapshotEncryptionKey"] = transformed
 	}
 

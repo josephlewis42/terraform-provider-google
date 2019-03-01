@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/helper/validation"
-	appengine "google.golang.org/api/appengine/v1"
 	"google.golang.org/api/cloudbilling/v1"
 	"google.golang.org/api/cloudresourcemanager/v1"
 	"google.golang.org/api/googleapi"
@@ -30,72 +28,71 @@ func resourceGoogleProject() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			State: resourceProjectImportState,
 		},
-		MigrateState:  resourceGoogleProjectMigrateState,
-		CustomizeDiff: resourceGoogleProjectCustomizeDiff,
+		MigrateState: resourceGoogleProjectMigrateState,
 
 		Schema: map[string]*schema.Schema{
-			"project_id": &schema.Schema{
+			"project_id": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ForceNew:     true,
 				ValidateFunc: validateProjectID(),
 			},
-			"skip_delete": &schema.Schema{
+			"skip_delete": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Computed: true,
 			},
-			"auto_create_network": &schema.Schema{
+			"auto_create_network": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
 			},
-			"name": &schema.Schema{
+			"name": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validateProjectName(),
 			},
-			"org_id": &schema.Schema{
+			"org_id": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 			},
-			"folder_id": &schema.Schema{
+			"folder_id": {
 				Type:      schema.TypeString,
 				Optional:  true,
 				Computed:  true,
 				StateFunc: parseFolderId,
 			},
-			"policy_data": &schema.Schema{
+			"policy_data": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
 				Removed:  "Use the 'google_project_iam_policy' resource to define policies for a Google Project",
 			},
-			"policy_etag": &schema.Schema{
+			"policy_etag": {
 				Type:     schema.TypeString,
 				Computed: true,
 				Removed:  "Use the the 'google_project_iam_policy' resource to define policies for a Google Project",
 			},
-			"number": &schema.Schema{
+			"number": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"billing_account": &schema.Schema{
+			"billing_account": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
-			"labels": &schema.Schema{
+			"labels": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Set:      schema.HashString,
 			},
-			"app_engine": &schema.Schema{
+			"app_engine": {
 				Type:     schema.TypeList,
-				Optional: true,
 				Elem:     appEngineResource(),
-				MaxItems: 1,
+				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
 		},
 	}
@@ -104,71 +101,61 @@ func resourceGoogleProject() *schema.Resource {
 func appEngineResource() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
-			"auth_domain": &schema.Schema{
+			"auth_domain": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"location_id": &schema.Schema{
+			"location_id": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"northamerica-northeast1",
-					"us-central",
-					"us-east1",
-					"us-east4",
-					"southamerica-east1",
-					"europe-west",
-					"europe-west2",
-					"europe-west3",
-					"asia-northeast1",
-					"asia-south1",
-					"australia-southeast1",
-				}, false),
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"serving_status": &schema.Schema{
+			"serving_status": {
 				Type:     schema.TypeString,
 				Optional: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"UNSPECIFIED",
-					"SERVING",
-					"USER_DISABLED",
-					"SYSTEM_DISABLED",
-				}, false),
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"feature_settings": &schema.Schema{
+			"feature_settings": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Computed: true,
-				MaxItems: 1,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 				Elem:     appEngineFeatureSettingsResource(),
 			},
-			"name": &schema.Schema{
+			"name": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"url_dispatch_rule": &schema.Schema{
+			"url_dispatch_rule": {
 				Type:     schema.TypeList,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 				Elem:     appEngineURLDispatchRuleResource(),
 			},
-			"code_bucket": &schema.Schema{
+			"code_bucket": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"default_hostname": &schema.Schema{
+			"default_hostname": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"default_bucket": &schema.Schema{
+			"default_bucket": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"gcr_domain": &schema.Schema{
+			"gcr_domain": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
 		},
 	}
@@ -177,17 +164,20 @@ func appEngineResource() *schema.Resource {
 func appEngineURLDispatchRuleResource() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
-			"domain": &schema.Schema{
+			"domain": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"path": &schema.Schema{
+			"path": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
-			"service": &schema.Schema{
+			"service": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
 		},
 	}
@@ -196,24 +186,13 @@ func appEngineURLDispatchRuleResource() *schema.Resource {
 func appEngineFeatureSettingsResource() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
-			"split_health_checks": &schema.Schema{
+			"split_health_checks": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				Removed:  "This field has been removed. Use the google_app_engine_application resource instead.",
 			},
 		},
 	}
-}
-
-func resourceGoogleProjectCustomizeDiff(diff *schema.ResourceDiff, meta interface{}) error {
-	if old, new := diff.GetChange("app_engine.#"); old != nil && new != nil && old.(int) > 0 && new.(int) < 1 {
-		// if we're going from app_engine set to unset, we need to delete the project, app_engine has no delete
-		return diff.ForceNew("app_engine")
-	} else if old, _ := diff.GetChange("app_engine.0.location_id"); diff.HasChange("app_engine.0.location_id") && old != nil && old.(string) != "" {
-		// if location_id was already set, and has a new value, that forces a new app
-		// if location_id wasn't set, don't force a new value, as we're just enabling app engine
-		return diff.ForceNew("app_engine.0.location_id")
-	}
-	return nil
 }
 
 func resourceGoogleProjectCreate(d *schema.ResourceData, meta interface{}) error {
@@ -239,7 +218,10 @@ func resourceGoogleProjectCreate(d *schema.ResourceData, meta interface{}) error
 
 	op, err := config.clientResourceManager.Projects.Create(project).Do()
 	if err != nil {
-		return fmt.Errorf("Error creating project %s (%s): %s.", project.ProjectId, project.Name, err)
+		return fmt.Errorf("error creating project %s (%s): %s. "+
+			"If you received a 403 error, make sure you have the"+
+			" `roles/resourcemanager.projectCreator` permission",
+			project.ProjectId, project.Name, err)
 	}
 
 	d.SetId(pid)
@@ -255,24 +237,6 @@ func resourceGoogleProjectCreate(d *schema.ResourceData, meta interface{}) error
 	// Set the billing account
 	if _, ok := d.GetOk("billing_account"); ok {
 		err = updateProjectBillingAccount(d, config)
-		if err != nil {
-			return err
-		}
-	}
-
-	// set up App Engine, too
-	app, err := expandAppEngineApp(d)
-	if err != nil {
-		return err
-	}
-	if app != nil {
-		log.Printf("[DEBUG] Enabling App Engine")
-		// enable the app engine APIs so we can create stuff
-		if err = enableService("appengine.googleapis.com", project.ProjectId, config); err != nil {
-			return fmt.Errorf("Error enabling the App Engine Admin API required to configure App Engine applications: %s", err)
-		}
-		log.Printf("[DEBUG] Enabled App Engine")
-		err = createAppEngineApp(config, pid, app)
 		if err != nil {
 			return err
 		}
@@ -300,23 +264,6 @@ func resourceGoogleProjectCreate(d *schema.ResourceData, meta interface{}) error
 	return nil
 }
 
-func createAppEngineApp(config *Config, pid string, app *appengine.Application) error {
-	app.Id = pid
-	log.Printf("[DEBUG] Creating App Engine App")
-	op, err := config.clientAppEngine.Apps.Create(app).Do()
-	if err != nil {
-		return fmt.Errorf("Error creating App Engine application: %s", err.Error())
-	}
-
-	// Wait for the operation to complete
-	waitErr := appEngineOperationWait(config.clientAppEngine, op, pid, "App Engine app to create")
-	if waitErr != nil {
-		return waitErr
-	}
-	log.Printf("[DEBUG] Created App Engine App")
-	return nil
-}
-
 func resourceGoogleProjectRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 	pid := d.Id()
@@ -335,9 +282,13 @@ func resourceGoogleProjectRead(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	d.Set("project_id", pid)
-	d.Set("number", strconv.FormatInt(int64(p.ProjectNumber), 10))
+	d.Set("number", strconv.FormatInt(p.ProjectNumber, 10))
 	d.Set("name", p.Name)
 	d.Set("labels", p.Labels)
+
+	// We get app_engine.#: "" => "<computed>" without this set
+	// Remove when app_engine field is removed from schema completely
+	d.Set("app_engine", nil)
 
 	if p.Parent != nil {
 		switch p.Parent.Type {
@@ -370,28 +321,6 @@ func resourceGoogleProjectRead(d *schema.ResourceData, meta interface{}) error {
 		d.Set("billing_account", _ba)
 	}
 
-	// read the App Engine app, if one exists
-	// we don't have the config available for import, so we can't rely on
-	// that to read it. And honestly, we want to know if an App exists that
-	// shouldn't. So this tries to read it, sets it to empty if none exists,
-	// or sets it in state if one does exist.
-	app, err := config.clientAppEngine.Apps.Get(pid).Do()
-	if err != nil && !isGoogleApiErrorWithCode(err, 404) && !isApiNotEnabledError(err) {
-		return fmt.Errorf("Error retrieving App Engine application %q: %s", pid, err.Error())
-	} else if isGoogleApiErrorWithCode(err, 404) {
-		d.Set("app_engine", []map[string]interface{}{})
-	} else if isApiNotEnabledError(err) {
-		log.Printf("[WARN] App Engine Admin API not enabled, please enable it to read App Engine info about project %q: %s", pid, err.Error())
-	} else {
-		appBlocks, err := flattenAppEngineApp(app)
-		if err != nil {
-			return fmt.Errorf("Error serializing App Engine app: %s", err.Error())
-		}
-		err = d.Set("app_engine", appBlocks)
-		if err != nil {
-			return fmt.Errorf("Error setting App Engine application in state. This is a bug, please report it at https://github.com/terraform-providers/terraform-provider-google/issues. Error is:\n%s", err.Error())
-		}
-	}
 	return nil
 }
 
@@ -496,39 +425,7 @@ func resourceGoogleProjectUpdate(d *schema.ResourceData, meta interface{}) error
 		d.SetPartial("labels")
 	}
 
-	// App Engine App has changed
-	if ok := d.HasChange("app_engine"); ok {
-		app, err := expandAppEngineApp(d)
-		if err != nil {
-			return err
-		}
-		// ignore if app is now not set; that should force new resource using customizediff
-		if app != nil {
-			if old, new := d.GetChange("app_engine.#"); (old == nil || old.(int) < 1) && new != nil && new.(int) > 0 {
-				err = createAppEngineApp(config, pid, app)
-				if err != nil {
-					return err
-				}
-			} else {
-				log.Printf("[DEBUG] Updating App Engine App")
-				op, err := config.clientAppEngine.Apps.Patch(pid, app).UpdateMask("authDomain,servingStatus,featureSettings.splitHealthChecks").Do()
-				if err != nil {
-					return fmt.Errorf("Error creating App Engine application: %s", err.Error())
-				}
-
-				// Wait for the operation to complete
-				waitErr := appEngineOperationWait(config.clientAppEngine, op, pid, "App Engine app to update")
-				if waitErr != nil {
-					return waitErr
-				}
-				log.Printf("[DEBUG] Updated App Engine App")
-			}
-			d.SetPartial("app_engine")
-		}
-	}
-
 	d.Partial(false)
-
 	return resourceGoogleProjectRead(d, meta)
 }
 
@@ -588,12 +485,12 @@ func forceDeleteComputeNetwork(projectId, networkName string, config *Config) er
 func updateProjectBillingAccount(d *schema.ResourceData, config *Config) error {
 	pid := d.Id()
 	name := d.Get("billing_account").(string)
-	ba := cloudbilling.ProjectBillingInfo{}
+	ba := &cloudbilling.ProjectBillingInfo{}
 	// If we're unlinking an existing billing account, an empty request does that, not an empty-string billing account.
 	if name != "" {
 		ba.BillingAccountName = "billingAccounts/" + name
 	}
-	_, err := config.clientBilling.Projects.UpdateBillingInfo(prefixedProject(pid), &ba).Do()
+	_, err := config.clientBilling.Projects.UpdateBillingInfo(prefixedProject(pid), ba).Do()
 	if err != nil {
 		d.Set("billing_account", "")
 		if _err, ok := err.(*googleapi.Error); ok {
@@ -602,101 +499,16 @@ func updateProjectBillingAccount(d *schema.ResourceData, config *Config) error {
 		return fmt.Errorf("Error setting billing account %q for project %q: %v", name, prefixedProject(pid), err)
 	}
 	for retries := 0; retries < 3; retries++ {
-		err = resourceGoogleProjectRead(d, config)
+		ba, err = config.clientBilling.Projects.GetBillingInfo(prefixedProject(pid)).Do()
 		if err != nil {
 			return err
 		}
-		if d.Get("billing_account").(string) == name {
-			break
+		baName := strings.TrimPrefix(ba.BillingAccountName, "billingAccounts/")
+		if baName == name {
+			return nil
 		}
-		time.Sleep(3)
+		time.Sleep(3 * time.Second)
 	}
-	if d.Get("billing_account").(string) != name {
-		return fmt.Errorf("Timed out waiting for billing account to return correct value.  Waiting for %s, got %s.",
-			d.Get("billding_account").(string), name)
-	}
-	return nil
-}
-
-func expandAppEngineApp(d *schema.ResourceData) (*appengine.Application, error) {
-	blocks := d.Get("app_engine").([]interface{})
-	if len(blocks) < 1 {
-		return nil, nil
-	}
-	if len(blocks) > 1 {
-		return nil, fmt.Errorf("only one app_engine block may be defined per project")
-	}
-	result := &appengine.Application{
-		AuthDomain:    d.Get("app_engine.0.auth_domain").(string),
-		LocationId:    d.Get("app_engine.0.location_id").(string),
-		Id:            d.Get("project_id").(string),
-		GcrDomain:     d.Get("app_engine.0.gcr_domain").(string),
-		ServingStatus: d.Get("app_engine.0.serving_status").(string),
-	}
-	featureSettings, err := expandAppEngineFeatureSettings(d, "app_engine.0.")
-	if err != nil {
-		return nil, err
-	}
-	result.FeatureSettings = featureSettings
-	return result, nil
-}
-
-func flattenAppEngineApp(app *appengine.Application) ([]map[string]interface{}, error) {
-	result := map[string]interface{}{
-		"auth_domain":      app.AuthDomain,
-		"code_bucket":      app.CodeBucket,
-		"default_bucket":   app.DefaultBucket,
-		"default_hostname": app.DefaultHostname,
-		"location_id":      app.LocationId,
-		"name":             app.Name,
-		"serving_status":   app.ServingStatus,
-	}
-	dispatchRules, err := flattenAppEngineDispatchRules(app.DispatchRules)
-	if err != nil {
-		return nil, err
-	}
-	result["url_dispatch_rule"] = dispatchRules
-	featureSettings, err := flattenAppEngineFeatureSettings(app.FeatureSettings)
-	if err != nil {
-		return nil, err
-	}
-	result["feature_settings"] = featureSettings
-	return []map[string]interface{}{result}, nil
-}
-
-func expandAppEngineFeatureSettings(d *schema.ResourceData, prefix string) (*appengine.FeatureSettings, error) {
-	blocks := d.Get(prefix + "feature_settings").([]interface{})
-	if len(blocks) < 1 {
-		return nil, nil
-	}
-	if len(blocks) > 1 {
-		return nil, fmt.Errorf("only one feature_settings block may be defined per app")
-	}
-	return &appengine.FeatureSettings{
-		SplitHealthChecks: d.Get(prefix + "feature_settings.0.split_health_checks").(bool),
-		// force send SplitHealthChecks, so if it's set to false it still gets disabled
-		ForceSendFields: []string{"SplitHealthChecks"},
-	}, nil
-}
-
-func flattenAppEngineFeatureSettings(settings *appengine.FeatureSettings) ([]map[string]interface{}, error) {
-	if settings == nil {
-		return []map[string]interface{}{}, nil
-	}
-	result := map[string]interface{}{
-		"split_health_checks": settings.SplitHealthChecks,
-	}
-	return []map[string]interface{}{result}, nil
-}
-
-func flattenAppEngineDispatchRules(rules []*appengine.UrlDispatchRule) ([]map[string]interface{}, error) {
-	results := make([]map[string]interface{}, 0, len(rules))
-	for _, rule := range rules {
-		results = append(results, map[string]interface{}{
-			"domain":  rule.Domain,
-			"path":    rule.Path,
-			"service": rule.Service,
-		})
-	}
-	return results, nil
+	return fmt.Errorf("Timed out waiting for billing account to return correct value.  Waiting for %s, got %s.",
+		name, strings.TrimPrefix(ba.BillingAccountName, "billingAccounts/"))
 }

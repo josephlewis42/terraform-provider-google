@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform/helper/schema"
-	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/compute/v1"
 )
 
 func resourceComputeVpnGateway() *schema.Resource {
@@ -84,11 +84,6 @@ func resourceComputeVpnGateway() *schema.Resource {
 func resourceComputeVpnGatewayCreate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-
 	obj := make(map[string]interface{})
 	descriptionProp, err := expandComputeVpnGatewayDescription(d.Get("description"), d, config)
 	if err != nil {
@@ -121,7 +116,7 @@ func resourceComputeVpnGatewayCreate(d *schema.ResourceData, meta interface{}) e
 	}
 
 	log.Printf("[DEBUG] Creating new VpnGateway: %#v", obj)
-	res, err := Post(config, url, obj)
+	res, err := sendRequestWithTimeout(config, "POST", url, obj, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("Error creating VpnGateway: %s", err)
 	}
@@ -133,6 +128,10 @@ func resourceComputeVpnGatewayCreate(d *schema.ResourceData, meta interface{}) e
 	}
 	d.SetId(id)
 
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
 	op := &compute.Operation{}
 	err = Convert(res, op)
 	if err != nil {
@@ -157,40 +156,40 @@ func resourceComputeVpnGatewayCreate(d *schema.ResourceData, meta interface{}) e
 func resourceComputeVpnGatewayRead(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-
 	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/regions/{{region}}/targetVpnGateways/{{name}}")
 	if err != nil {
 		return err
 	}
 
-	res, err := Get(config, url)
+	res, err := sendRequest(config, "GET", url, nil)
 	if err != nil {
 		return handleNotFoundError(err, d, fmt.Sprintf("ComputeVpnGateway %q", d.Id()))
 	}
 
-	if err := d.Set("creation_timestamp", flattenComputeVpnGatewayCreationTimestamp(res["creationTimestamp"])); err != nil {
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading VpnGateway: %s", err)
 	}
-	if err := d.Set("description", flattenComputeVpnGatewayDescription(res["description"])); err != nil {
+
+	if err := d.Set("creation_timestamp", flattenComputeVpnGatewayCreationTimestamp(res["creationTimestamp"], d)); err != nil {
 		return fmt.Errorf("Error reading VpnGateway: %s", err)
 	}
-	if err := d.Set("name", flattenComputeVpnGatewayName(res["name"])); err != nil {
+	if err := d.Set("description", flattenComputeVpnGatewayDescription(res["description"], d)); err != nil {
 		return fmt.Errorf("Error reading VpnGateway: %s", err)
 	}
-	if err := d.Set("network", flattenComputeVpnGatewayNetwork(res["network"])); err != nil {
+	if err := d.Set("name", flattenComputeVpnGatewayName(res["name"], d)); err != nil {
 		return fmt.Errorf("Error reading VpnGateway: %s", err)
 	}
-	if err := d.Set("region", flattenComputeVpnGatewayRegion(res["region"])); err != nil {
+	if err := d.Set("network", flattenComputeVpnGatewayNetwork(res["network"], d)); err != nil {
+		return fmt.Errorf("Error reading VpnGateway: %s", err)
+	}
+	if err := d.Set("region", flattenComputeVpnGatewayRegion(res["region"], d)); err != nil {
 		return fmt.Errorf("Error reading VpnGateway: %s", err)
 	}
 	if err := d.Set("self_link", ConvertSelfLinkToV1(res["selfLink"].(string))); err != nil {
-		return fmt.Errorf("Error reading VpnGateway: %s", err)
-	}
-	if err := d.Set("project", project); err != nil {
 		return fmt.Errorf("Error reading VpnGateway: %s", err)
 	}
 
@@ -200,22 +199,22 @@ func resourceComputeVpnGatewayRead(d *schema.ResourceData, meta interface{}) err
 func resourceComputeVpnGatewayDelete(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
-	project, err := getProject(d, config)
-	if err != nil {
-		return err
-	}
-
 	url, err := replaceVars(d, config, "https://www.googleapis.com/compute/v1/projects/{{project}}/regions/{{region}}/targetVpnGateways/{{name}}")
 	if err != nil {
 		return err
 	}
 
+	var obj map[string]interface{}
 	log.Printf("[DEBUG] Deleting VpnGateway %q", d.Id())
-	res, err := Delete(config, url)
+	res, err := sendRequestWithTimeout(config, "DELETE", url, obj, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return handleNotFoundError(err, d, "VpnGateway")
 	}
 
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
 	op := &compute.Operation{}
 	err = Convert(res, op)
 	if err != nil {
@@ -236,7 +235,9 @@ func resourceComputeVpnGatewayDelete(d *schema.ResourceData, meta interface{}) e
 
 func resourceComputeVpnGatewayImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	config := meta.(*Config)
-	parseImportId([]string{"projects/(?P<project>[^/]+)/regions/(?P<region>[^/]+)/targetVpnGateways/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<region>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config)
+	if err := parseImportId([]string{"projects/(?P<project>[^/]+)/regions/(?P<region>[^/]+)/targetVpnGateways/(?P<name>[^/]+)", "(?P<project>[^/]+)/(?P<region>[^/]+)/(?P<name>[^/]+)", "(?P<name>[^/]+)"}, d, config); err != nil {
+		return nil, err
+	}
 
 	// Replace import id for the resource id
 	id, err := replaceVars(d, config, "{{name}}")
@@ -248,23 +249,26 @@ func resourceComputeVpnGatewayImport(d *schema.ResourceData, meta interface{}) (
 	return []*schema.ResourceData{d}, nil
 }
 
-func flattenComputeVpnGatewayCreationTimestamp(v interface{}) interface{} {
+func flattenComputeVpnGatewayCreationTimestamp(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeVpnGatewayDescription(v interface{}) interface{} {
+func flattenComputeVpnGatewayDescription(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeVpnGatewayName(v interface{}) interface{} {
+func flattenComputeVpnGatewayName(v interface{}, d *schema.ResourceData) interface{} {
 	return v
 }
 
-func flattenComputeVpnGatewayNetwork(v interface{}) interface{} {
-	return v
+func flattenComputeVpnGatewayNetwork(v interface{}, d *schema.ResourceData) interface{} {
+	if v == nil {
+		return v
+	}
+	return ConvertSelfLinkToV1(v.(string))
 }
 
-func flattenComputeVpnGatewayRegion(v interface{}) interface{} {
+func flattenComputeVpnGatewayRegion(v interface{}, d *schema.ResourceData) interface{} {
 	if v == nil {
 		return v
 	}

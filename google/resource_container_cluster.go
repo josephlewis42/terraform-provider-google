@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/errwrap"
-	"github.com/hashicorp/go-version"
+	version "github.com/hashicorp/go-version"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/helper/validation"
@@ -42,6 +42,10 @@ var (
 			},
 		},
 	}
+
+	ipAllocationSubnetFields    = []string{"ip_allocation_policy.0.create_subnetwork", "ip_allocation_policy.0.subnetwork_name"}
+	ipAllocationCidrBlockFields = []string{"ip_allocation_policy.0.cluster_ipv4_cidr_block", "ip_allocation_policy.0.services_ipv4_cidr_block", "ip_allocation_policy.0.node_ipv4_cidr_block"}
+	ipAllocationRangeFields     = []string{"ip_allocation_policy.0.cluster_secondary_range_name", "ip_allocation_policy.0.services_secondary_range_name"}
 )
 
 func resourceContainerCluster() *schema.Resource {
@@ -53,8 +57,8 @@ func resourceContainerCluster() *schema.Resource {
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(30 * time.Minute),
-			Update: schema.DefaultTimeout(10 * time.Minute),
-			Delete: schema.DefaultTimeout(10 * time.Minute),
+			Update: schema.DefaultTimeout(30 * time.Minute),
+			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
 
 		SchemaVersion: 1,
@@ -182,6 +186,41 @@ func resourceContainerCluster() *schema.Resource {
 				},
 			},
 
+			"cluster_autoscaling": {
+				Type:     schema.TypeList,
+				Computed: true,
+				MaxItems: 1,
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"enabled": {
+							Type:     schema.TypeBool,
+							Required: true,
+						},
+						"resource_limits": {
+							Type:     schema.TypeList,
+							Optional: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"resource_type": {
+										Type:     schema.TypeString,
+										Required: true,
+									},
+									"minimum": {
+										Type:     schema.TypeInt,
+										Optional: true,
+									},
+									"maximum": {
+										Type:     schema.TypeInt,
+										Optional: true,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+
 			"cluster_ipv4_cidr": {
 				Type:         schema.TypeString,
 				Optional:     true,
@@ -196,11 +235,26 @@ func resourceContainerCluster() *schema.Resource {
 				ForceNew: true,
 			},
 
+			"enable_binary_authorization": {
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+				Computed: true,
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+
 			"enable_kubernetes_alpha": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				ForceNew: true,
 				Default:  false,
+			},
+
+			"enable_tpu": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: true,
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
+				Computed: true,
 			},
 
 			"enable_legacy_abac": {
@@ -254,22 +308,19 @@ func resourceContainerCluster() *schema.Resource {
 			"master_auth": {
 				Type:     schema.TypeList,
 				Optional: true,
-				ForceNew: true,
 				MaxItems: 1,
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"password": {
 							Type:      schema.TypeString,
-							Required:  true,
-							ForceNew:  true,
+							Optional:  true,
 							Sensitive: true,
 						},
 
 						"username": {
 							Type:     schema.TypeString,
-							Required: true,
-							ForceNew: true,
+							Optional: true,
 						},
 
 						"client_certificate_config": {
@@ -378,6 +429,8 @@ func resourceContainerCluster() *schema.Resource {
 			},
 
 			"pod_security_policy_config": {
+				// Remove return nil from expand when this is removed for good.
+				Removed:  "This field is in beta. Use it in the the google-beta provider instead. See https://terraform.io/docs/providers/google/provider_versions.html for more details.",
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
@@ -389,7 +442,6 @@ func resourceContainerCluster() *schema.Resource {
 						},
 					},
 				},
-				DiffSuppressFunc: podSecurityPolicyCfgSuppress,
 			},
 
 			"project": {
@@ -430,15 +482,59 @@ func resourceContainerCluster() *schema.Resource {
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						// GKE creates subnetwork automatically
+						"create_subnetwork": {
+							Type:          schema.TypeBool,
+							Optional:      true,
+							ForceNew:      true,
+							ConflictsWith: ipAllocationRangeFields,
+						},
+						"subnetwork_name": {
+							Type:          schema.TypeString,
+							Optional:      true,
+							ForceNew:      true,
+							ConflictsWith: ipAllocationRangeFields,
+						},
+
+						// GKE creates/deletes secondary ranges in VPC
+						"cluster_ipv4_cidr_block": {
+							Type:             schema.TypeString,
+							Optional:         true,
+							Computed:         true,
+							ForceNew:         true,
+							ConflictsWith:    ipAllocationRangeFields,
+							DiffSuppressFunc: cidrOrSizeDiffSuppress,
+						},
+						"services_ipv4_cidr_block": {
+							Type:             schema.TypeString,
+							Optional:         true,
+							Computed:         true,
+							ForceNew:         true,
+							ConflictsWith:    ipAllocationRangeFields,
+							DiffSuppressFunc: cidrOrSizeDiffSuppress,
+						},
+						"node_ipv4_cidr_block": {
+							Type:             schema.TypeString,
+							Optional:         true,
+							ForceNew:         true,
+							ConflictsWith:    ipAllocationRangeFields,
+							DiffSuppressFunc: cidrOrSizeDiffSuppress,
+						},
+
+						// User manages secondary ranges manually
 						"cluster_secondary_range_name": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ForceNew: true,
+							Type:          schema.TypeString,
+							Optional:      true,
+							Computed:      true,
+							ForceNew:      true,
+							ConflictsWith: append(ipAllocationSubnetFields, ipAllocationCidrBlockFields...),
 						},
 						"services_secondary_range_name": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ForceNew: true,
+							Type:          schema.TypeString,
+							Optional:      true,
+							Computed:      true,
+							ForceNew:      true,
+							ConflictsWith: append(ipAllocationSubnetFields, ipAllocationCidrBlockFields...),
 						},
 					},
 				},
@@ -450,23 +546,63 @@ func resourceContainerCluster() *schema.Resource {
 			},
 
 			"private_cluster": {
+				Removed:  "Use private_cluster_config.enable_private_nodes instead.",
+				Computed: true,
 				Type:     schema.TypeBool,
 				Optional: true,
 				ForceNew: true,
-				Default:  false,
+			},
+
+			"private_cluster_config": {
+				Type:             schema.TypeList,
+				Optional:         true,
+				MaxItems:         1,
+				Computed:         true,
+				DiffSuppressFunc: containerClusterPrivateClusterConfigSuppress,
+				ConflictsWith:    []string{"private_cluster", "master_ipv4_cidr_block"},
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"enable_private_endpoint": {
+							Type:             schema.TypeBool,
+							Optional:         true,
+							ForceNew:         true,
+							DiffSuppressFunc: containerClusterPrivateClusterConfigSuppress,
+						},
+						"enable_private_nodes": {
+							Type:             schema.TypeBool,
+							Optional:         true,
+							ForceNew:         true,
+							DiffSuppressFunc: containerClusterPrivateClusterConfigSuppress,
+						},
+						"master_ipv4_cidr_block": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							ForceNew:     true,
+							ValidateFunc: orEmpty(validation.CIDRNetwork(28, 28)),
+						},
+						"private_endpoint": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"public_endpoint": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+					},
+				},
 			},
 
 			"master_ipv4_cidr_block": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.CIDRNetwork(28, 28),
+				Removed:  "Use private_cluster_config.master_ipv4_cidr_block instead.",
+				Computed: true,
+				Type:     schema.TypeString,
+				Optional: true,
 			},
 
 			"resource_labels": {
 				Type:     schema.TypeMap,
 				Optional: true,
-				Elem:     schema.TypeString,
+				Elem:     &schema.Schema{Type: schema.TypeString},
 			},
 		},
 	}
@@ -488,40 +624,26 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 	clusterName := d.Get("name").(string)
 
 	cluster := &containerBeta.Cluster{
-		Name:             clusterName,
-		InitialNodeCount: int64(d.Get("initial_node_count").(int)),
-	}
-
-	timeoutInMinutes := int(d.Timeout(schema.TimeoutCreate).Minutes())
-
-	if v, ok := d.GetOk("maintenance_policy"); ok {
-		cluster.MaintenancePolicy = expandMaintenancePolicy(v)
-	}
-
-	if v, ok := d.GetOk("master_auth"); ok {
-		masterAuths := v.([]interface{})
-		masterAuth := masterAuths[0].(map[string]interface{})
-		cluster.MasterAuth = &containerBeta.MasterAuth{
-			Password: masterAuth["password"].(string),
-			Username: masterAuth["username"].(string),
-		}
-		if certConfigV, ok := masterAuth["client_certificate_config"]; ok {
-			certConfigs := certConfigV.([]interface{})
-			if len(certConfigs) > 0 {
-				certConfig := certConfigs[0].(map[string]interface{})
-				cluster.MasterAuth.ClientCertificateConfig = &containerBeta.ClientCertificateConfig{
-					IssueClientCertificate: certConfig["issue_client_certificate"].(bool),
-				}
-			}
-		}
-	}
-
-	if v, ok := d.GetOk("master_authorized_networks_config"); ok {
-		cluster.MasterAuthorizedNetworksConfig = expandMasterAuthorizedNetworksConfig(v)
-	}
-
-	if v, ok := d.GetOk("min_master_version"); ok {
-		cluster.InitialClusterVersion = v.(string)
+		Name:                           clusterName,
+		InitialNodeCount:               int64(d.Get("initial_node_count").(int)),
+		MaintenancePolicy:              expandMaintenancePolicy(d.Get("maintenance_policy")),
+		MasterAuthorizedNetworksConfig: expandMasterAuthorizedNetworksConfig(d.Get("master_authorized_networks_config")),
+		InitialClusterVersion:          d.Get("min_master_version").(string),
+		ClusterIpv4Cidr:                d.Get("cluster_ipv4_cidr").(string),
+		Description:                    d.Get("description").(string),
+		LegacyAbac: &containerBeta.LegacyAbac{
+			Enabled:         d.Get("enable_legacy_abac").(bool),
+			ForceSendFields: []string{"Enabled"},
+		},
+		LoggingService:          d.Get("logging_service").(string),
+		MonitoringService:       d.Get("monitoring_service").(string),
+		NetworkPolicy:           expandNetworkPolicy(d.Get("network_policy")),
+		AddonsConfig:            expandClusterAddonsConfig(d.Get("addons_config")),
+		EnableKubernetesAlpha:   d.Get("enable_kubernetes_alpha").(bool),
+		IpAllocationPolicy:      expandIPAllocationPolicy(d.Get("ip_allocation_policy")),
+		PodSecurityPolicyConfig: expandPodSecurityPolicyConfig(d.Get("pod_security_policy_config")),
+		MasterAuth:              expandMasterAuth(d.Get("master_auth")),
+		ResourceLabels:          expandStringMap(d, "resource_labels"),
 	}
 
 	// Only allow setting node_version on create if it's set to the equivalent master version,
@@ -548,27 +670,6 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 		cluster.Locations = convertStringSet(locationsSet)
 	}
 
-	if v, ok := d.GetOk("cluster_ipv4_cidr"); ok {
-		cluster.ClusterIpv4Cidr = v.(string)
-	}
-
-	if v, ok := d.GetOk("description"); ok {
-		cluster.Description = v.(string)
-	}
-
-	cluster.LegacyAbac = &containerBeta.LegacyAbac{
-		Enabled:         d.Get("enable_legacy_abac").(bool),
-		ForceSendFields: []string{"Enabled"},
-	}
-
-	if v, ok := d.GetOk("logging_service"); ok {
-		cluster.LoggingService = v.(string)
-	}
-
-	if v, ok := d.GetOk("monitoring_service"); ok {
-		cluster.MonitoringService = v.(string)
-	}
-
 	if v, ok := d.GetOk("network"); ok {
 		network, err := ParseNetworkFieldValue(v.(string), d, config)
 		if err != nil {
@@ -577,24 +678,12 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 		cluster.Network = network.RelativeLink()
 	}
 
-	if v, ok := d.GetOk("network_policy"); ok && len(v.([]interface{})) > 0 {
-		cluster.NetworkPolicy = expandNetworkPolicy(v)
-	}
-
 	if v, ok := d.GetOk("subnetwork"); ok {
 		subnetwork, err := ParseSubnetworkFieldValue(v.(string), d, config)
 		if err != nil {
 			return err
 		}
 		cluster.Subnetwork = subnetwork.RelativeLink()
-	}
-
-	if v, ok := d.GetOk("addons_config"); ok {
-		cluster.AddonsConfig = expandClusterAddonsConfig(v)
-	}
-
-	if v, ok := d.GetOk("enable_kubernetes_alpha"); ok {
-		cluster.EnableKubernetesAlpha = v.(bool)
 	}
 
 	nodePoolsCount := d.Get("node_pool.#").(int)
@@ -619,38 +708,8 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 		cluster.NodeConfig = expandNodeConfig(v)
 	}
 
-	if v, ok := d.GetOk("ip_allocation_policy"); ok {
-		cluster.IpAllocationPolicy, err = expandIPAllocationPolicy(v)
-		if err != nil {
-			return err
-		}
-	}
-
-	if v, ok := d.GetOk("pod_security_policy_config"); ok {
-		cluster.PodSecurityPolicyConfig = expandPodSecurityPolicyConfig(v)
-	}
-
-	if v, ok := d.GetOk("master_ipv4_cidr_block"); ok {
-		cluster.MasterIpv4CidrBlock = v.(string)
-	}
-
-	if v, ok := d.GetOk("private_cluster"); ok {
-		if cluster.PrivateCluster = v.(bool); cluster.PrivateCluster {
-			if cluster.MasterIpv4CidrBlock == "" {
-				return fmt.Errorf("master_ipv4_cidr_block is mandatory when private_cluster=true")
-			}
-			if cluster.IpAllocationPolicy == nil {
-				return fmt.Errorf("ip_allocation_policy is mandatory when private_cluster=true")
-			}
-		}
-	}
-
-	if v, ok := d.GetOk("resource_labels"); ok {
-		m := make(map[string]string)
-		for k, val := range v.(map[string]interface{}) {
-			m[k] = val.(string)
-		}
-		cluster.ResourceLabels = m
+	if v, ok := d.GetOk("private_cluster_config"); ok {
+		cluster.PrivateClusterConfig = expandPrivateClusterConfig(v)
 	}
 
 	req := &containerBeta.CreateClusterRequest{
@@ -661,7 +720,11 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 	defer mutexKV.Unlock(containerClusterMutexKey(project, location, clusterName))
 
 	parent := fmt.Sprintf("projects/%s/locations/%s", project, location)
-	op, err := config.clientContainerBeta.Projects.Locations.Clusters.Create(parent, req).Do()
+	var op *containerBeta.Operation
+	err = retry(func() error {
+		op, err = config.clientContainerBeta.Projects.Locations.Clusters.Create(parent, req).Do()
+		return err
+	})
 	if err != nil {
 		return err
 	}
@@ -669,8 +732,14 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 	d.SetId(clusterName)
 
 	// Wait until it's created
-	waitErr := containerSharedOperationWait(config, op, project, location, "creating GKE cluster", timeoutInMinutes, 3)
+	timeoutInMinutes := int(d.Timeout(schema.TimeoutCreate).Minutes())
+	waitErr := containerOperationWait(config, op, project, location, "creating GKE cluster", timeoutInMinutes)
 	if waitErr != nil {
+		if deleteErr := cleanFailedContainerCluster(d, meta); deleteErr != nil {
+			log.Printf("[WARN] Unable to clean up cluster from failed creation: %s", deleteErr)
+		} else {
+			log.Printf("[WARN] Verified failed creation of cluster %s was cleaned up", d.Id())
+		}
 		// The resource didn't actually create
 		d.SetId("")
 		return waitErr
@@ -684,7 +753,7 @@ func resourceContainerClusterCreate(d *schema.ResourceData, meta interface{}) er
 		if err != nil {
 			return errwrap.Wrapf("Error deleting default node pool: {{err}}", err)
 		}
-		err = containerSharedOperationWait(config, op, project, location, "removing default node pool", timeoutInMinutes, 3)
+		err = containerOperationWait(config, op, project, location, "removing default node pool", timeoutInMinutes)
 		if err != nil {
 			return errwrap.Wrapf("Error deleting default node pool: {{err}}", err)
 		}
@@ -753,14 +822,16 @@ func resourceContainerClusterRead(d *schema.ResourceData, meta interface{}) erro
 	d.Set("monitoring_service", cluster.MonitoringService)
 	d.Set("network", cluster.NetworkConfig.Network)
 	d.Set("subnetwork", cluster.NetworkConfig.Subnetwork)
+	if err := d.Set("cluster_autoscaling", nil); err != nil {
+		return err
+	}
 	if err := d.Set("node_config", flattenNodeConfig(cluster.NodeConfig)); err != nil {
 		return err
 	}
 	d.Set("project", project)
 	if err := d.Set("addons_config", flattenClusterAddonsConfig(cluster.AddonsConfig)); err != nil {
-
+		return err
 	}
-
 	nps, err := flattenClusterNodePools(d, config, cluster.NodePools)
 	if err != nil {
 		return err
@@ -769,7 +840,11 @@ func resourceContainerClusterRead(d *schema.ResourceData, meta interface{}) erro
 		return err
 	}
 
-	if err := d.Set("ip_allocation_policy", flattenIPAllocationPolicy(cluster.IpAllocationPolicy)); err != nil {
+	if err := d.Set("ip_allocation_policy", flattenIPAllocationPolicy(cluster.IpAllocationPolicy, d, config)); err != nil {
+		return err
+	}
+
+	if err := d.Set("private_cluster_config", flattenPrivateClusterConfig(cluster.PrivateClusterConfig)); err != nil {
 		return err
 	}
 
@@ -781,14 +856,7 @@ func resourceContainerClusterRead(d *schema.ResourceData, meta interface{}) erro
 		return err
 	}
 
-	if err := d.Set("pod_security_policy_config", flattenPodSecurityPolicyConfig(cluster.PodSecurityPolicyConfig)); err != nil {
-		return err
-	}
-
-	d.Set("private_cluster", cluster.PrivateCluster)
-	d.Set("master_ipv4_cidr_block", cluster.MasterIpv4CidrBlock)
 	d.Set("resource_labels", cluster.ResourceLabels)
-
 	return nil
 }
 
@@ -820,7 +888,7 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 				return err
 			}
 			// Wait until it's updated
-			return containerSharedOperationWait(config, op, project, location, updateDescription, timeoutInMinutes, 2)
+			return containerOperationWait(config, op, project, location, updateDescription, timeoutInMinutes)
 		}
 	}
 
@@ -842,56 +910,6 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 		log.Printf("[INFO] GKE cluster %s master authorized networks config has been updated", d.Id())
 
 		d.SetPartial("master_authorized_networks_config")
-	}
-
-	// The master must be updated before the nodes
-	if d.HasChange("min_master_version") {
-		desiredMasterVersion := d.Get("min_master_version").(string)
-		currentMasterVersion := d.Get("master_version").(string)
-		des, err := version.NewVersion(desiredMasterVersion)
-		if err != nil {
-			return err
-		}
-		cur, err := version.NewVersion(currentMasterVersion)
-		if err != nil {
-			return err
-		}
-
-		// Only upgrade the master if the current version is lower than the desired version
-		if cur.LessThan(des) {
-			req := &containerBeta.UpdateClusterRequest{
-				Update: &containerBeta.ClusterUpdate{
-					DesiredMasterVersion: desiredMasterVersion,
-				},
-			}
-
-			updateF := updateFunc(req, "updating GKE master version")
-			// Call update serially.
-			if err := lockedCall(lockKey, updateF); err != nil {
-				return err
-			}
-			log.Printf("[INFO] GKE cluster %s: master has been updated to %s", d.Id(), desiredMasterVersion)
-		}
-		d.SetPartial("min_master_version")
-	}
-
-	if d.HasChange("node_version") {
-		desiredNodeVersion := d.Get("node_version").(string)
-		req := &containerBeta.UpdateClusterRequest{
-			Update: &containerBeta.ClusterUpdate{
-				DesiredNodeVersion: desiredNodeVersion,
-			},
-		}
-
-		updateF := updateFunc(req, "updating GKE node version")
-		// Call update serially.
-		if err := lockedCall(lockKey, updateF); err != nil {
-			return err
-		}
-		log.Printf("[INFO] GKE cluster %s: nodes have been updated to %s", d.Id(),
-			desiredNodeVersion)
-
-		d.SetPartial("node_version")
 	}
 
 	if d.HasChange("addons_config") {
@@ -935,7 +953,7 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 			}
 
 			// Wait until it's updated
-			return containerSharedOperationWait(config, op, project, location, "updating GKE cluster maintenance policy", timeoutInMinutes, 2)
+			return containerOperationWait(config, op, project, location, "updating GKE cluster maintenance policy", timeoutInMinutes)
 		}
 
 		// Call update serially.
@@ -1013,7 +1031,7 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 			}
 
 			// Wait until it's updated
-			err = containerSharedOperationWait(config, op, project, location, "updating GKE legacy ABAC", timeoutInMinutes, 2)
+			err = containerOperationWait(config, op, project, location, "updating GKE legacy ABAC", timeoutInMinutes)
 			log.Println("[DEBUG] done updating enable_legacy_abac")
 			return err
 		}
@@ -1048,6 +1066,33 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 		d.SetPartial("monitoring_service")
 	}
 
+	if d.HasChange("logging_service") {
+		logging := d.Get("logging_service").(string)
+
+		req := &containerBeta.SetLoggingServiceRequest{
+			LoggingService: logging,
+		}
+		updateF := func() error {
+			name := containerClusterFullName(project, location, clusterName)
+			op, err := config.clientContainerBeta.Projects.Locations.Clusters.SetLogging(name, req).Do()
+			if err != nil {
+				return err
+			}
+
+			// Wait until it's updated
+			return containerOperationWait(config, op, project, location, "updating GKE logging service", timeoutInMinutes)
+		}
+
+		// Call update serially.
+		if err := lockedCall(lockKey, updateF); err != nil {
+			return err
+		}
+
+		log.Printf("[INFO] GKE cluster %s: logging service has been updated to %s", d.Id(),
+			logging)
+		d.SetPartial("logging_service")
+	}
+
 	if d.HasChange("network_policy") {
 		np := d.Get("network_policy")
 		req := &containerBeta.SetNetworkPolicyRequest{
@@ -1063,7 +1108,7 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 			}
 
 			// Wait until it's updated
-			err = containerSharedOperationWait(config, op, project, location, "updating GKE cluster network policy", timeoutInMinutes, 2)
+			err = containerOperationWait(config, op, project, location, "updating GKE cluster network policy", timeoutInMinutes)
 			log.Println("[DEBUG] done updating network_policy")
 			return err
 		}
@@ -1093,21 +1138,126 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 		d.SetPartial("node_pool")
 	}
 
-	if d.HasChange("logging_service") {
-		logging := d.Get("logging_service").(string)
-
-		req := &containerBeta.SetLoggingServiceRequest{
-			LoggingService: logging,
+	// The master must be updated before the nodes
+	if d.HasChange("min_master_version") {
+		desiredMasterVersion := d.Get("min_master_version").(string)
+		currentMasterVersion := d.Get("master_version").(string)
+		des, err := version.NewVersion(desiredMasterVersion)
+		if err != nil {
+			return err
 		}
+		cur, err := version.NewVersion(currentMasterVersion)
+		if err != nil {
+			return err
+		}
+
+		// Only upgrade the master if the current version is lower than the desired version
+		if cur.LessThan(des) {
+			req := &containerBeta.UpdateClusterRequest{
+				Update: &containerBeta.ClusterUpdate{
+					DesiredMasterVersion: desiredMasterVersion,
+				},
+			}
+
+			updateF := updateFunc(req, "updating GKE master version")
+			// Call update serially.
+			if err := lockedCall(lockKey, updateF); err != nil {
+				return err
+			}
+			log.Printf("[INFO] GKE cluster %s: master has been updated to %s", d.Id(), desiredMasterVersion)
+		}
+		d.SetPartial("min_master_version")
+	}
+
+	// It's not super important that this come after updating the node pools, but it still seems like a better
+	// idea than doing it before.
+	if d.HasChange("node_version") {
+		foundDefault := false
+		if n, ok := d.GetOk("node_pool.#"); ok {
+			for i := 0; i < n.(int); i++ {
+				key := fmt.Sprintf("node_pool.%d.", i)
+				if d.Get(key+"name").(string) == "default-pool" {
+					desiredNodeVersion := d.Get("node_version").(string)
+					req := &containerBeta.UpdateClusterRequest{
+						Update: &containerBeta.ClusterUpdate{
+							DesiredNodeVersion: desiredNodeVersion,
+							DesiredNodePoolId:  "default-pool",
+						},
+					}
+					updateF := updateFunc(req, "updating GKE default node pool node version")
+					// Call update serially.
+					if err := lockedCall(lockKey, updateF); err != nil {
+						return err
+					}
+					log.Printf("[INFO] GKE cluster %s: default node pool has been updated to %s", d.Id(),
+						desiredNodeVersion)
+					foundDefault = true
+				}
+			}
+		}
+
+		if !foundDefault {
+			return fmt.Errorf("node_version was updated but default-pool was not found. To update the version for a non-default pool, use the version attribute on that pool.")
+		}
+
+		d.SetPartial("node_version")
+	}
+
+	if d.HasChange("node_config") {
+		if d.HasChange("node_config.0.image_type") {
+			it := d.Get("node_config.0.image_type").(string)
+			req := &containerBeta.UpdateClusterRequest{
+				Update: &containerBeta.ClusterUpdate{
+					DesiredImageType: it,
+				},
+			}
+
+			updateF := func() error {
+				name := containerClusterFullName(project, location, clusterName)
+				op, err := config.clientContainerBeta.Projects.Locations.Clusters.Update(name, req).Do()
+				if err != nil {
+					return err
+				}
+
+				// Wait until it's updated
+				return containerOperationWait(config, op, project, location, "updating GKE image type", timeoutInMinutes)
+			}
+
+			// Call update serially.
+			if err := lockedCall(lockKey, updateF); err != nil {
+				return err
+			}
+
+			log.Printf("[INFO] GKE cluster %s: image type has been updated to %s", d.Id(), it)
+		}
+		d.SetPartial("node_config")
+	}
+
+	if d.HasChange("master_auth") {
+		var req *containerBeta.SetMasterAuthRequest
+		if ma, ok := d.GetOk("master_auth"); ok {
+			req = &containerBeta.SetMasterAuthRequest{
+				Action: "SET_USERNAME",
+				Update: expandMasterAuth(ma),
+			}
+		} else {
+			req = &containerBeta.SetMasterAuthRequest{
+				Action: "SET_USERNAME",
+				Update: &containerBeta.MasterAuth{
+					Username: "admin",
+				},
+			}
+		}
+
 		updateF := func() error {
 			name := containerClusterFullName(project, location, clusterName)
-			op, err := config.clientContainerBeta.Projects.Locations.Clusters.SetLogging(name, req).Do()
+			op, err := config.clientContainerBeta.Projects.Locations.Clusters.SetMasterAuth(name, req).Do()
 			if err != nil {
 				return err
 			}
 
 			// Wait until it's updated
-			return containerSharedOperationWait(config, op, project, location, "updating GKE logging service", timeoutInMinutes, 2)
+			return containerOperationWait(config, op, project, location, "updating master auth", timeoutInMinutes)
 		}
 
 		// Call update serially.
@@ -1115,40 +1265,14 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 			return err
 		}
 
-		log.Printf("[INFO] GKE cluster %s: logging service has been updated to %s", d.Id(),
-			logging)
-		d.SetPartial("logging_service")
-	}
-
-	if d.HasChange("pod_security_policy_config") {
-		c := d.Get("pod_security_policy_config")
-		req := &containerBeta.UpdateClusterRequest{
-			Update: &containerBeta.ClusterUpdate{
-				DesiredPodSecurityPolicyConfig: expandPodSecurityPolicyConfig(c),
-			},
-		}
-
-		updateF := func() error {
-			op, err := config.clientContainerBeta.Projects.Zones.Clusters.Update(project, location, clusterName, req).Do()
-			if err != nil {
-				return err
-			}
-			// Wait until it's updated
-			return containerSharedOperationWait(config, op, project, location, "updating GKE cluster pod security policy config", timeoutInMinutes, 2)
-		}
-		if err := lockedCall(lockKey, updateF); err != nil {
-			return err
-		}
-		log.Printf("[INFO] GKE cluster %s pod security policy config has been updated", d.Id())
-
-		d.SetPartial("pod_security_policy_config")
+		log.Printf("[INFO] GKE cluster %s: master auth has been updated", d.Id())
+		d.SetPartial("master_auth")
 	}
 
 	if d.HasChange("resource_labels") {
-		resourceLabels := d.Get("resource_labels").(map[string]string)
-
+		resourceLabels := d.Get("resource_labels").(map[string]interface{})
 		req := &containerBeta.SetLabelsRequest{
-			ResourceLabels: resourceLabels,
+			ResourceLabels: convertStringMap(resourceLabels),
 		}
 		updateF := func() error {
 			name := containerClusterFullName(project, location, clusterName)
@@ -1158,7 +1282,7 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 			}
 
 			// Wait until it's updated
-			return containerSharedOperationWait(config, op, project, location, "updating GKE resource labels", timeoutInMinutes, 2)
+			return containerOperationWait(config, op, project, location, "updating GKE resource labels", timeoutInMinutes)
 		}
 
 		// Call update serially.
@@ -1173,11 +1297,15 @@ func resourceContainerClusterUpdate(d *schema.ResourceData, meta interface{}) er
 		name := fmt.Sprintf("%s/nodePools/%s", containerClusterFullName(project, location, clusterName), "default-pool")
 		op, err := config.clientContainerBeta.Projects.Locations.Clusters.NodePools.Delete(name).Do()
 		if err != nil {
-			return errwrap.Wrapf("Error deleting default node pool: {{err}}", err)
-		}
-		err = containerSharedOperationWait(config, op, project, location, "removing default node pool", timeoutInMinutes, 3)
-		if err != nil {
-			return errwrap.Wrapf("Error deleting default node pool: {{err}}", err)
+			if !isGoogleApiErrorWithCode(err, 404) {
+				return errwrap.Wrapf("Error deleting default node pool: {{err}}", err)
+			}
+			log.Printf("[WARN] Container cluster %q default node pool already removed, no change", d.Id())
+		} else {
+			err = containerOperationWait(config, op, project, location, "removing default node pool", timeoutInMinutes)
+			if err != nil {
+				return errwrap.Wrapf("Error deleting default node pool: {{err}}", err)
+			}
 		}
 	}
 
@@ -1194,16 +1322,9 @@ func resourceContainerClusterDelete(d *schema.ResourceData, meta interface{}) er
 		return err
 	}
 
-	var location string
-	locations := []string{}
-	if regionName, isRegionalCluster := d.GetOk("region"); !isRegionalCluster {
-		location, err = getZone(d, config)
-		if err != nil {
-			return err
-		}
-		locations = append(locations, location)
-	} else {
-		location = regionName.(string)
+	location, err := getLocation(d, config)
+	if err != nil {
+		return err
 	}
 
 	clusterName := d.Get("name").(string)
@@ -1213,7 +1334,7 @@ func resourceContainerClusterDelete(d *schema.ResourceData, meta interface{}) er
 	mutexKV.Lock(containerClusterMutexKey(project, location, clusterName))
 	defer mutexKV.Unlock(containerClusterMutexKey(project, location, clusterName))
 
-	var op interface{}
+	var op *containerBeta.Operation
 	var count = 0
 	err = resource.Retry(30*time.Second, func() *resource.RetryError {
 		count++
@@ -1237,7 +1358,7 @@ func resourceContainerClusterDelete(d *schema.ResourceData, meta interface{}) er
 	}
 
 	// Wait until it's deleted
-	waitErr := containerSharedOperationWait(config, op, project, location, "deleting GKE cluster", timeoutInMinutes, 3)
+	waitErr := containerOperationWait(config, op, project, location, "deleting GKE cluster", timeoutInMinutes)
 	if waitErr != nil {
 		return waitErr
 	}
@@ -1246,6 +1367,44 @@ func resourceContainerClusterDelete(d *schema.ResourceData, meta interface{}) er
 
 	d.SetId("")
 
+	return nil
+}
+
+// cleanFailedContainerCluster deletes clusters that failed but were
+// created in an error state. Similar to resourceContainerClusterDelete
+// but implemented in separate function as it doesn't try to lock already
+// locked cluster state, does different error handling, and doesn't do retries.
+func cleanFailedContainerCluster(d *schema.ResourceData, meta interface{}) error {
+	config := meta.(*Config)
+
+	project, err := getProject(d, config)
+	if err != nil {
+		return err
+	}
+
+	location, err := getLocation(d, config)
+	if err != nil {
+		return err
+	}
+
+	clusterName := d.Get("name").(string)
+	fullName := containerClusterFullName(project, location, clusterName)
+
+	log.Printf("[DEBUG] Cleaning up failed GKE cluster %s", d.Get("name").(string))
+	op, err := config.clientContainerBeta.Projects.Locations.Clusters.Delete(fullName).Do()
+	if err != nil {
+		return handleNotFoundError(err, d, fmt.Sprintf("Container Cluster %q", d.Get("name").(string)))
+	}
+
+	// Wait until it's deleted
+	timeoutInMinutes := int(d.Timeout(schema.TimeoutDelete).Minutes())
+	waitErr := containerOperationWait(config, op, project, location, "deleting GKE cluster", timeoutInMinutes)
+	if waitErr != nil {
+		return waitErr
+	}
+
+	log.Printf("[INFO] GKE cluster %s has been deleted", d.Id())
+	d.SetId("")
 	return nil
 }
 
@@ -1274,7 +1433,12 @@ func getInstanceGroupUrlsFromManagerUrls(config *Config, igmUrls []string) ([]st
 }
 
 func expandClusterAddonsConfig(configured interface{}) *containerBeta.AddonsConfig {
-	config := configured.([]interface{})[0].(map[string]interface{})
+	l := configured.([]interface{})
+	if len(l) == 0 || l[0] == nil {
+		return nil
+	}
+
+	config := l[0].(map[string]interface{})
 	ac := &containerBeta.AddonsConfig{}
 
 	if v, ok := config["http_load_balancing"]; ok && len(v.([]interface{})) > 0 {
@@ -1312,47 +1476,80 @@ func expandClusterAddonsConfig(configured interface{}) *containerBeta.AddonsConf
 	return ac
 }
 
-func expandIPAllocationPolicy(configured interface{}) (*containerBeta.IPAllocationPolicy, error) {
-	ap := &containerBeta.IPAllocationPolicy{}
+func expandIPAllocationPolicy(configured interface{}) *containerBeta.IPAllocationPolicy {
 	l := configured.([]interface{})
-	if len(l) > 0 {
-		if config, ok := l[0].(map[string]interface{}); ok {
-			ap.UseIpAliases = true
-			if v, ok := config["cluster_secondary_range_name"]; ok {
-				ap.ClusterSecondaryRangeName = v.(string)
-			}
-
-			if v, ok := config["services_secondary_range_name"]; ok {
-				ap.ServicesSecondaryRangeName = v.(string)
-			}
-		} else {
-			return nil, fmt.Errorf("clusters using IP aliases must specify secondary ranges")
-		}
+	if len(l) == 0 || l[0] == nil {
+		return nil
 	}
 
-	return ap, nil
+	config := l[0].(map[string]interface{})
+
+	return &containerBeta.IPAllocationPolicy{
+		UseIpAliases: true,
+
+		CreateSubnetwork: config["create_subnetwork"].(bool),
+		SubnetworkName:   config["subnetwork_name"].(string),
+
+		ClusterIpv4CidrBlock:  config["cluster_ipv4_cidr_block"].(string),
+		ServicesIpv4CidrBlock: config["services_ipv4_cidr_block"].(string),
+		NodeIpv4CidrBlock:     config["node_ipv4_cidr_block"].(string),
+
+		ClusterSecondaryRangeName:  config["cluster_secondary_range_name"].(string),
+		ServicesSecondaryRangeName: config["services_secondary_range_name"].(string),
+	}
 }
 
 func expandMaintenancePolicy(configured interface{}) *containerBeta.MaintenancePolicy {
-	result := &containerBeta.MaintenancePolicy{}
-	if len(configured.([]interface{})) > 0 {
-		maintenancePolicy := configured.([]interface{})[0].(map[string]interface{})
-		dailyMaintenanceWindow := maintenancePolicy["daily_maintenance_window"].([]interface{})[0].(map[string]interface{})
-		startTime := dailyMaintenanceWindow["start_time"].(string)
-		result.Window = &containerBeta.MaintenanceWindow{
+	l := configured.([]interface{})
+	if len(l) == 0 || l[0] == nil {
+		return nil
+	}
+
+	maintenancePolicy := l[0].(map[string]interface{})
+	dailyMaintenanceWindow := maintenancePolicy["daily_maintenance_window"].([]interface{})[0].(map[string]interface{})
+	startTime := dailyMaintenanceWindow["start_time"].(string)
+	return &containerBeta.MaintenancePolicy{
+		Window: &containerBeta.MaintenanceWindow{
 			DailyMaintenanceWindow: &containerBeta.DailyMaintenanceWindow{
 				StartTime: startTime,
 			},
+		},
+	}
+}
+
+func expandMasterAuth(configured interface{}) *containerBeta.MasterAuth {
+	l := configured.([]interface{})
+	if len(l) == 0 || l[0] == nil {
+		return nil
+	}
+
+	masterAuth := l[0].(map[string]interface{})
+	result := &containerBeta.MasterAuth{
+		Username: masterAuth["username"].(string),
+		Password: masterAuth["password"].(string),
+	}
+	if _, ok := masterAuth["client_certificate_config"]; ok {
+		if len(masterAuth["client_certificate_config"].([]interface{})) > 0 {
+			clientCertificateConfig := masterAuth["client_certificate_config"].([]interface{})[0].(map[string]interface{})
+			if _, ok := clientCertificateConfig["issue_client_certificate"]; ok {
+				result.ClientCertificateConfig = &containerBeta.ClientCertificateConfig{
+					IssueClientCertificate: clientCertificateConfig["issue_client_certificate"].(bool),
+				}
+			}
 		}
 	}
 	return result
 }
 
 func expandMasterAuthorizedNetworksConfig(configured interface{}) *containerBeta.MasterAuthorizedNetworksConfig {
-	result := &containerBeta.MasterAuthorizedNetworksConfig{}
-	if len(configured.([]interface{})) > 0 {
-		result.Enabled = true
-		config := configured.([]interface{})[0].(map[string]interface{})
+	l := configured.([]interface{})
+	if len(l) == 0 {
+		return nil
+	}
+	result := &containerBeta.MasterAuthorizedNetworksConfig{
+		Enabled: true,
+	}
+	if config, ok := l[0].(map[string]interface{}); ok {
 		if _, ok := config["cidr_blocks"]; ok {
 			cidrBlocks := config["cidr_blocks"].(*schema.Set).List()
 			result.CidrBlocks = make([]*containerBeta.CidrBlock, 0)
@@ -1369,27 +1566,39 @@ func expandMasterAuthorizedNetworksConfig(configured interface{}) *containerBeta
 }
 
 func expandNetworkPolicy(configured interface{}) *containerBeta.NetworkPolicy {
+	l := configured.([]interface{})
+	if len(l) == 0 {
+		return nil
+	}
 	result := &containerBeta.NetworkPolicy{}
-	if configured != nil && len(configured.([]interface{})) > 0 {
-		config := configured.([]interface{})[0].(map[string]interface{})
-		if enabled, ok := config["enabled"]; ok && enabled.(bool) {
-			result.Enabled = true
-			if provider, ok := config["provider"]; ok {
-				result.Provider = provider.(string)
-			}
+	config := l[0].(map[string]interface{})
+	if enabled, ok := config["enabled"]; ok && enabled.(bool) {
+		result.Enabled = true
+		if provider, ok := config["provider"]; ok {
+			result.Provider = provider.(string)
 		}
 	}
 	return result
 }
 
-func expandPodSecurityPolicyConfig(configured interface{}) *containerBeta.PodSecurityPolicyConfig {
-	result := &containerBeta.PodSecurityPolicyConfig{}
-	if len(configured.([]interface{})) > 0 {
-		config := configured.([]interface{})[0].(map[string]interface{})
-		result.Enabled = config["enabled"].(bool)
-		result.ForceSendFields = []string{"Enabled"}
+func expandPrivateClusterConfig(configured interface{}) *containerBeta.PrivateClusterConfig {
+	l := configured.([]interface{})
+	if len(l) == 0 {
+		return nil
 	}
-	return result
+	config := l[0].(map[string]interface{})
+	return &containerBeta.PrivateClusterConfig{
+		EnablePrivateEndpoint: config["enable_private_endpoint"].(bool),
+		EnablePrivateNodes:    config["enable_private_nodes"].(bool),
+		MasterIpv4CidrBlock:   config["master_ipv4_cidr_block"].(string),
+		ForceSendFields:       []string{"EnablePrivateEndpoint", "EnablePrivateNodes", "MasterIpv4CidrBlock"},
+	}
+}
+
+func expandPodSecurityPolicyConfig(configured interface{}) *containerBeta.PodSecurityPolicyConfig {
+	// Removing lists is hard - the element count (#) will have a diff from nil -> computed
+	// If we set this to empty on Read, it will be stable.
+	return nil
 }
 
 func flattenNetworkPolicy(c *containerBeta.NetworkPolicy) []map[string]interface{} {
@@ -1460,12 +1669,46 @@ func flattenClusterNodePools(d *schema.ResourceData, config *Config, c []*contai
 	return nodePools, nil
 }
 
-func flattenIPAllocationPolicy(c *containerBeta.IPAllocationPolicy) []map[string]interface{} {
+func flattenPrivateClusterConfig(c *containerBeta.PrivateClusterConfig) []map[string]interface{} {
 	if c == nil {
 		return nil
 	}
 	return []map[string]interface{}{
 		{
+			"enable_private_endpoint": c.EnablePrivateEndpoint,
+			"enable_private_nodes":    c.EnablePrivateNodes,
+			"master_ipv4_cidr_block":  c.MasterIpv4CidrBlock,
+			"private_endpoint":        c.PrivateEndpoint,
+			"public_endpoint":         c.PublicEndpoint,
+		},
+	}
+}
+
+func flattenIPAllocationPolicy(c *containerBeta.IPAllocationPolicy, d *schema.ResourceData, config *Config) []map[string]interface{} {
+	if c == nil {
+		return nil
+	}
+	node_cidr_block := ""
+	if c.SubnetworkName != "" {
+		subnetwork, err := ParseSubnetworkFieldValue(c.SubnetworkName, d, config)
+		if err == nil {
+			sn, err := config.clientCompute.Subnetworks.Get(subnetwork.Project, subnetwork.Region, subnetwork.Name).Do()
+			if err == nil {
+				node_cidr_block = sn.IpCidrRange
+			}
+		} else {
+			log.Printf("[WARN] Unable to parse subnetwork name, got error while trying to get new subnetwork: %s", err)
+		}
+	}
+	return []map[string]interface{}{
+		{
+			"create_subnetwork": c.CreateSubnetwork,
+			"subnetwork_name":   c.SubnetworkName,
+
+			"cluster_ipv4_cidr_block":  c.ClusterIpv4CidrBlock,
+			"services_ipv4_cidr_block": c.ServicesIpv4CidrBlock,
+			"node_ipv4_cidr_block":     node_cidr_block,
+
 			"cluster_secondary_range_name":  c.ClusterSecondaryRangeName,
 			"services_secondary_range_name": c.ServicesSecondaryRangeName,
 		},
@@ -1513,9 +1756,6 @@ func flattenMasterAuthorizedNetworksConfig(c *containerBeta.MasterAuthorizedNetw
 	if c == nil {
 		return nil
 	}
-	if len(c.CidrBlocks) == 0 {
-		return nil
-	}
 	result := make(map[string]interface{})
 	if c.Enabled {
 		cidrBlocks := make([]interface{}, 0, len(c.CidrBlocks))
@@ -1530,41 +1770,56 @@ func flattenMasterAuthorizedNetworksConfig(c *containerBeta.MasterAuthorizedNetw
 	return []map[string]interface{}{result}
 }
 
-func flattenPodSecurityPolicyConfig(c *containerBeta.PodSecurityPolicyConfig) []map[string]interface{} {
-	if c == nil {
-		return nil
-	}
-	return []map[string]interface{}{
-		{
-			"enabled": c.Enabled,
-		},
-	}
-}
-
 func resourceContainerClusterStateImporter(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-	parts := strings.Split(d.Id(), "/")
+	config := meta.(*Config)
 
+	parts := strings.Split(d.Id(), "/")
+	var project, location, clusterName string
 	switch len(parts) {
 	case 2:
-		if loc := parts[0]; isZone(loc) {
-			d.Set("zone", loc)
-		} else {
-			d.Set("region", loc)
-		}
-		d.Set("name", parts[1])
+		location = parts[0]
+		clusterName = parts[1]
 	case 3:
-		d.Set("project", parts[0])
-		if loc := parts[1]; isZone(loc) {
-			d.Set("zone", loc)
-		} else {
-			d.Set("region", loc)
-		}
-		d.Set("name", parts[2])
+		project = parts[0]
+		location = parts[1]
+		clusterName = parts[2]
 	default:
 		return nil, fmt.Errorf("Invalid container cluster specifier. Expecting {zone}/{name} or {project}/{zone}/{name}")
 	}
 
-	d.SetId(parts[len(parts)-1])
+	if len(project) > 0 {
+		d.Set("project", project)
+	} else {
+		var err error
+		project, err = getProject(d, config)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if isZone(location) {
+		d.Set("zone", location)
+	} else {
+		d.Set("region", location)
+	}
+
+	d.Set("name", clusterName)
+	d.SetId(clusterName)
+
+	// Try to determine remove_default_node_pool from presence of default
+	// node pool; if still present and user has it set to true, the pool
+	// will get removed on next apply.
+	nodePool := fmt.Sprintf("%s/nodePools/%s", containerClusterFullName(project, location, clusterName), "default-pool")
+	_, err := config.clientContainerBeta.Projects.Locations.Clusters.NodePools.Get(nodePool).Do()
+	if err != nil && isGoogleApiErrorWithCode(err, 404) {
+		d.Set("remove_default_node_pool", true)
+	} else {
+		d.Set("remove_default_node_pool", false)
+		if err != nil {
+			log.Printf("[WARN] Unable to import value for remove_default_node_pool, got error while trying to get default node pool: %s", err)
+		}
+	}
+
 	return []*schema.ResourceData{d}, nil
 }
 
@@ -1594,6 +1849,11 @@ func extractNodePoolInformationFromCluster(d *schema.ResourceData, config *Confi
 	}, nil
 }
 
+func cidrOrSizeDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
+	// If the user specified a size and the API returned a full cidr block, suppress.
+	return strings.HasPrefix(new, "/") && strings.HasSuffix(old, new)
+}
+
 // We want to suppress diffs for empty or default client certificate configs, i.e:
 // 	[{ "issue_client_certificate": true}] --> []
 //  [] -> [{ "issue_client_certificate": true}]
@@ -1618,16 +1878,20 @@ func masterAuthClientCertCfgSuppress(k, old, new string, r *schema.ResourceData)
 	return strings.HasSuffix(k, ".issue_client_certificate") && old == "" && new == "true"
 }
 
-func podSecurityPolicyCfgSuppress(k, old, new string, r *schema.ResourceData) bool {
-	if k == "pod_security_policy_config.#" && old == "1" && new == "0" {
-		if v, ok := r.GetOk("pod_security_policy_config"); ok {
-			cfgList := v.([]interface{})
-			if len(cfgList) > 0 {
-				d := cfgList[0].(map[string]interface{})
-				// Suppress if old value was {enabled == false}
-				return !d["enabled"].(bool)
-			}
-		}
+// We want to suppress diffs for empty/disabled private cluster config.
+func containerClusterPrivateClusterConfigSuppress(k, old, new string, d *schema.ResourceData) bool {
+	o, n := d.GetChange("private_cluster_config.0.enable_private_endpoint")
+	suppressEndpoint := !o.(bool) && !n.(bool)
+
+	o, n = d.GetChange("private_cluster_config.0.enable_private_nodes")
+	suppressNodes := !o.(bool) && !n.(bool)
+
+	if k == "private_cluster_config.0.enable_private_endpoint" {
+		return suppressEndpoint
+	} else if k == "private_cluster_config.0.enable_private_nodes" {
+		return suppressNodes
+	} else if k == "private_cluster_config.#" {
+		return suppressEndpoint && suppressNodes
 	}
 	return false
 }

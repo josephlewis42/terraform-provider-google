@@ -3,6 +3,8 @@
 package google
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strings"
@@ -11,9 +13,6 @@ import (
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
-	"github.com/hashicorp/terraform/terraform"
-	computeBeta "google.golang.org/api/compute/v0.beta"
-	"google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 )
 
@@ -43,20 +42,6 @@ func getRegion(d TerraformResourceData, config *Config) (string, error) {
 	return getRegionFromSchema("region", "zone", d, config)
 }
 
-func getRegionFromInstanceState(is *terraform.InstanceState, config *Config) (string, error) {
-	res, ok := is.Attributes["region"]
-
-	if ok && res != "" {
-		return res, nil
-	}
-
-	if config.Region != "" {
-		return config.Region, nil
-	}
-
-	return "", fmt.Errorf("region: required field is not set")
-}
-
 // getProject reads the "project" field from the given resource data and falls
 // back to the provider's value if not given. If the provider's value is not
 // given, an error is returned.
@@ -64,66 +49,18 @@ func getProject(d TerraformResourceData, config *Config) (string, error) {
 	return getProjectFromSchema("project", d, config)
 }
 
-func getProjectFromInstanceState(is *terraform.InstanceState, config *Config) (string, error) {
-	res, ok := is.Attributes["project"]
-
-	if ok && res != "" {
-		return res, nil
+// getProjectFromDiff reads the "project" field from the given diff and falls
+// back to the provider's value if not given. If the provider's value is not
+// given, an error is returned.
+func getProjectFromDiff(d *schema.ResourceDiff, config *Config) (string, error) {
+	res, ok := d.GetOk("project")
+	if ok {
+		return res.(string), nil
 	}
-
 	if config.Project != "" {
 		return config.Project, nil
 	}
-
-	return "", fmt.Errorf("project: required field is not set")
-}
-
-func getZonalResourceFromRegion(getResource func(string) (interface{}, error), region string, compute *compute.Service, project string) (interface{}, error) {
-	zoneList, err := compute.Zones.List(project).Do()
-	if err != nil {
-		return nil, err
-	}
-	var resource interface{}
-	for _, zone := range zoneList.Items {
-		if strings.Contains(zone.Name, region) {
-			resource, err = getResource(zone.Name)
-			if err != nil {
-				if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == 404 {
-					// Resource was not found in this zone
-					continue
-				}
-				return nil, fmt.Errorf("Error reading Resource: %s", err)
-			}
-			// Resource was found
-			return resource, nil
-		}
-	}
-	// Resource does not exist in this region
-	return nil, nil
-}
-
-func getZonalBetaResourceFromRegion(getResource func(string) (interface{}, error), region string, compute *computeBeta.Service, project string) (interface{}, error) {
-	zoneList, err := compute.Zones.List(project).Do()
-	if err != nil {
-		return nil, err
-	}
-	var resource interface{}
-	for _, zone := range zoneList.Items {
-		if strings.Contains(zone.Name, region) {
-			resource, err = getResource(zone.Name)
-			if err != nil {
-				if gerr, ok := err.(*googleapi.Error); ok && gerr.Code == 404 {
-					// Resource was not found in this zone
-					continue
-				}
-				return nil, fmt.Errorf("Error reading Resource: %s", err)
-			}
-			// Resource was found
-			return resource, nil
-		}
-	}
-	// Resource does not exist in this region
-	return nil, nil
+	return "", fmt.Errorf("%s: required field is not set", "project")
 }
 
 func getRouterLockName(region string, router string) string {
@@ -244,6 +181,12 @@ func ipCidrRangeDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
 	return false
 }
 
+// sha256DiffSuppress
+// if old is the hex-encoded sha256 sum of new, treat them as equal
+func sha256DiffSuppress(_, old, new string, _ *schema.ResourceData) bool {
+	return hex.EncodeToString(sha256.New().Sum([]byte(old))) == new
+}
+
 func caseDiffSuppress(_, old, new string, _ *schema.ResourceData) bool {
 	return strings.ToUpper(old) == strings.ToUpper(new)
 }
@@ -270,6 +213,11 @@ func rfc3339TimeDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
 // expandLabels pulls the value of "labels" out of a schema.ResourceData as a map[string]string.
 func expandLabels(d *schema.ResourceData) map[string]string {
 	return expandStringMap(d, "labels")
+}
+
+// expandEnvironmentVariables pulls the value of "environment_variables" out of a schema.ResourceData as a map[string]string.
+func expandEnvironmentVariables(d *schema.ResourceData) map[string]string {
+	return expandStringMap(d, "environment_variables")
 }
 
 // expandStringMap pulls the value of key out of a schema.ResourceData as a map[string]string.
@@ -322,6 +270,15 @@ func convertStringSet(set *schema.Set) []string {
 	return s
 }
 
+func golangSetFromStringSlice(strings []string) map[string]struct{} {
+	set := map[string]struct{}{}
+	for _, v := range strings {
+		set[v] = struct{}{}
+	}
+
+	return set
+}
+
 func mergeSchemas(a, b map[string]*schema.Schema) map[string]*schema.Schema {
 	merged := make(map[string]*schema.Schema)
 
@@ -336,16 +293,26 @@ func mergeSchemas(a, b map[string]*schema.Schema) map[string]*schema.Schema {
 	return merged
 }
 
-func mergeResourceMaps(ms ...map[string]*schema.Resource) map[string]*schema.Resource {
+func mergeResourceMaps(ms ...map[string]*schema.Resource) (map[string]*schema.Resource, error) {
 	merged := make(map[string]*schema.Resource)
+	duplicates := []string{}
 
 	for _, m := range ms {
 		for k, v := range m {
+			if _, ok := merged[k]; ok {
+				duplicates = append(duplicates, k)
+			}
+
 			merged[k] = v
 		}
 	}
 
-	return merged
+	var err error
+	if len(duplicates) > 0 {
+		err = fmt.Errorf("saw duplicates in mergeResourceMaps: %v", duplicates)
+	}
+
+	return merged, err
 }
 
 func retry(retryFunc func() error) error {
@@ -353,16 +320,30 @@ func retry(retryFunc func() error) error {
 }
 
 func retryTime(retryFunc func() error, minutes int) error {
-	return resource.Retry(time.Duration(minutes)*time.Minute, func() *resource.RetryError {
+	return retryTimeDuration(retryFunc, time.Duration(minutes)*time.Minute)
+}
+
+func retryTimeDuration(retryFunc func() error, duration time.Duration) error {
+	return resource.Retry(duration, func() *resource.RetryError {
 		err := retryFunc()
 		if err == nil {
 			return nil
 		}
-		if gerr, ok := err.(*googleapi.Error); ok && (gerr.Code == 429 || gerr.Code == 500 || gerr.Code == 502 || gerr.Code == 503) {
-			return resource.RetryableError(gerr)
+		for _, e := range errwrap.GetAllType(err, &googleapi.Error{}) {
+			if isRetryableError(e) {
+				return resource.RetryableError(e)
+			}
 		}
 		return resource.NonRetryableError(err)
 	})
+}
+
+func isRetryableError(err error) bool {
+	// 409's are retried because cloud sql throws a 409 when concurrent calls are made
+	if gerr, ok := err.(*googleapi.Error); ok && (gerr.Code == 409 || gerr.Code == 429 || gerr.Code == 500 || gerr.Code == 502 || gerr.Code == 503) {
+		return true
+	}
+	return false
 }
 
 func extractFirstMapConfig(m []interface{}) map[string]interface{} {
@@ -378,6 +359,17 @@ func lockedCall(lockKey string, f func() error) error {
 	defer mutexKV.Unlock(lockKey)
 
 	return f()
+}
+
+// This is a Printf sibling (Nprintf; Named Printf), which handles strings like
+// Nprintf("Hello %{target}!", map[string]interface{}{"target":"world"}) == "Hello world!".
+// This is particularly useful for generated tests, where we don't want to use Printf,
+// since that would require us to generate a very particular ordering of arguments.
+func Nprintf(format string, params map[string]interface{}) string {
+	for key, val := range params {
+		format = strings.Replace(format, "%{"+key+"}", fmt.Sprintf("%v", val), -1)
+	}
+	return format
 }
 
 // serviceAccountFQN will attempt to generate the fully qualified name in the format of:

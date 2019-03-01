@@ -25,25 +25,29 @@ description: |-
 Represents a TargetHttpProxy resource, which is used by one or more global
 forwarding rule to route incoming HTTP requests to a URL map.
 
+
 To get more information about TargetHttpProxy, see:
 
 * [API documentation](https://cloud.google.com/compute/docs/reference/latest/targetHttpProxies)
 * How-to Guides
     * [Official Documentation](https://cloud.google.com/compute/docs/load-balancing/http/target-proxies)
 
-## Example Usage
+<div class = "oics-button" style="float: right; margin: 0 0 -15px">
+  <a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fterraform-google-modules%2Fdocs-examples.git&cloudshell_working_dir=target_http_proxy_basic&cloudshell_image=gcr.io%2Fgraphite-cloud-shell-images%2Fterraform%3Alatest&open_in_editor=main.tf&cloudshell_print=.%2Fmotd&cloudshell_tutorial=.%2Ftutorial.md" target="_blank">
+    <img alt="Open in Cloud Shell" src="//gstatic.com/cloudssh/images/open-btn.svg" style="max-height: 44px; margin: 32px auto; max-width: 100%;">
+  </a>
+</div>
+## Example Usage - Target Http Proxy Basic
+
 
 ```hcl
 resource "google_compute_target_http_proxy" "default" {
   name        = "test-proxy"
-  description = "a description"
   url_map     = "${google_compute_url_map.default.self_link}"
 }
 
 resource "google_compute_url_map" "default" {
   name        = "url-map"
-  description = "a description"
-
   default_service = "${google_compute_backend_service.default.self_link}"
 
   host_rule {
@@ -63,7 +67,7 @@ resource "google_compute_url_map" "default" {
 }
 
 resource "google_compute_backend_service" "default" {
-  name        = "default-backend"
+  name        = "backend-service"
   port_name   = "http"
   protocol    = "HTTP"
   timeout_sec = 10
@@ -72,7 +76,7 @@ resource "google_compute_backend_service" "default" {
 }
 
 resource "google_compute_http_health_check" "default" {
-  name               = "test"
+  name               = "http-health-check"
   request_path       = "/"
   check_interval_sec = 1
   timeout_sec        = 1
@@ -83,6 +87,7 @@ resource "google_compute_http_health_check" "default" {
 
 The following arguments are supported:
 
+
 * `name` -
   (Required)
   Name of the resource. Provided by the client when the resource is
@@ -92,6 +97,7 @@ The following arguments are supported:
   first character must be a lowercase letter, and all following
   characters must be a dash, lowercase letter, or digit, except the last
   character, which cannot be a dash.
+
 * `url_map` -
   (Required)
   A reference to the UrlMap resource that defines the mapping from URL
@@ -100,10 +106,11 @@ The following arguments are supported:
 
 - - -
 
+
 * `description` -
   (Optional)
   An optional description of this resource.
-* `project` (Optional) The ID of the project in which the resource belongs.
+* `project` - (Optional) The ID of the project in which the resource belongs.
     If it is not provided, the provider project is used.
 
 
@@ -111,8 +118,10 @@ The following arguments are supported:
 
 In addition to the arguments listed above, the following computed attributes are exported:
 
+
 * `creation_timestamp` -
   Creation timestamp in RFC3339 text format.
+
 * `proxy_id` -
   The unique identifier for the resource.
 * `self_link` - The URI of the created resource.
@@ -136,3 +145,6 @@ $ terraform import google_compute_target_http_proxy.default projects/{{project}}
 $ terraform import google_compute_target_http_proxy.default {{project}}/{{name}}
 $ terraform import google_compute_target_http_proxy.default {{name}}
 ```
+
+-> If you're importing a resource with beta features, make sure to include `-provider=google-beta`
+as an argument so that Terraform uses the correct provider to import your resource.

@@ -11,34 +11,6 @@ import (
 	"google.golang.org/api/compute/v1"
 )
 
-func TestAccComputeRoute_basic(t *testing.T) {
-	t.Parallel()
-
-	var route compute.Route
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckComputeRouteDestroy,
-		Steps: []resource.TestStep{
-			resource.TestStep{
-				Config: testAccComputeRoute_basic(),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckComputeRouteExists(
-						"google_compute_route.foobar", &route),
-					resource.TestMatchResourceAttr(
-						"google_compute_route.foobar", "description", regexp.MustCompile("This is a route")),
-				),
-			},
-			resource.TestStep{
-				ResourceName:      "google_compute_route.foobar",
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
-	})
-}
-
 func TestAccComputeRoute_defaultInternetGateway(t *testing.T) {
 	t.Parallel()
 
@@ -49,14 +21,14 @@ func TestAccComputeRoute_defaultInternetGateway(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeRouteDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccComputeRoute_defaultInternetGateway(),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeRouteExists(
 						"google_compute_route.foobar", &route),
 				),
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_compute_route.foobar",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -77,7 +49,7 @@ func TestAccComputeRoute_hopInstance(t *testing.T) {
 		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckComputeRouteDestroy,
 		Steps: []resource.TestStep{
-			resource.TestStep{
+			{
 				Config: testAccComputeRoute_hopInstance(instanceName, zone),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckComputeRouteExists(
@@ -86,31 +58,13 @@ func TestAccComputeRoute_hopInstance(t *testing.T) {
 					resource.TestMatchResourceAttr("google_compute_route.foobar", "next_hop_instance", instanceNameRegexp),
 				),
 			},
-			resource.TestStep{
+			{
 				ResourceName:      "google_compute_route.foobar",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
 		},
 	})
-}
-
-func testAccCheckComputeRouteDestroy(s *terraform.State) error {
-	config := testAccProvider.Meta().(*Config)
-
-	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "google_compute_route" {
-			continue
-		}
-
-		_, err := config.clientCompute.Routes.Get(
-			config.Project, rs.Primary.ID).Do()
-		if err == nil {
-			return fmt.Errorf("Route still exists")
-		}
-	}
-
-	return nil
 }
 
 func testAccCheckComputeRouteExists(n string, route *compute.Route) resource.TestCheckFunc {
@@ -142,23 +96,6 @@ func testAccCheckComputeRouteExists(n string, route *compute.Route) resource.Tes
 	}
 }
 
-func testAccComputeRoute_basic() string {
-	return fmt.Sprintf(`
-resource "google_compute_network" "foobar" {
-	name = "route-test-%s"
-	auto_create_subnetworks = false
-	ipv4_range = "10.0.0.0/16"
-}
-
-resource "google_compute_route" "foobar" {
-	name = "route-test-%s"
-	description = "This is a route"
-	dest_range = "15.0.0.0/24"
-	network = "${google_compute_network.foobar.name}"
-	next_hop_ip = "10.0.1.5"
-}`, acctest.RandString(10), acctest.RandString(10))
-}
-
 func testAccComputeRoute_defaultInternetGateway() string {
 	return fmt.Sprintf(`
 resource "google_compute_route" "foobar" {
@@ -172,6 +109,11 @@ resource "google_compute_route" "foobar" {
 
 func testAccComputeRoute_hopInstance(instanceName, zone string) string {
 	return fmt.Sprintf(`
+data "google_compute_image" "my_image" {
+  family  = "debian-9"
+  project = "debian-cloud"
+}
+
 resource "google_compute_instance" "foo" {
   name         = "%s"
   machine_type = "n1-standard-1"
@@ -179,7 +121,7 @@ resource "google_compute_instance" "foo" {
 
   boot_disk {
     initialize_params{
-      image = "debian-cloud/debian-8"
+      image = "${data.google_compute_image.my_image.self_link}"
     }
   }
 

@@ -27,7 +27,7 @@ resource "google_folder" "department1" {
 resource "google_folder_iam_member" "admin" {
   folder  = "${google_folder.department1.name}"
   role    = "roles/editor"
-  member  = "user:jane@example.com"
+  member  = "user:alice@gmail.com"
 }
 ```
 
@@ -37,12 +37,12 @@ The following arguments are supported:
 
 * `folder` - (Required) The resource name of the folder the policy is attached to. Its format is folders/{folder_id}.
 
-* `member` - (Required) The identity that will be granted the privilege in the `role`.
+* `member` - (Required) The identity that will be granted the privilege in the `role`. For more details on format and restrictions see https://cloud.google.com/billing/reference/rest/v1/Policy#Binding
   This field can have one of the following values:
   * **user:{emailid}**: An email address that represents a specific Google account. For example, alice@gmail.com or joe@example.com.
   * **serviceAccount:{emailid}**: An email address that represents a service account. For example, my-other-app@appspot.gserviceaccount.com.
   * **group:{emailid}**: An email address that represents a Google group. For example, admins@example.com.
-  * **domain:{domain}**: A Google Apps domain name that represents all the users of that domain. For example, google.com or example.com.
+  * **domain:{domain}**: A G Suite domain (primary, instead of alias) name that represents all the users of that domain. For example, google.com or example.com.
 
 * `role` - (Required) The role that should be applied. Note that custom roles must be of the format
     `[projects|organizations]/{parent-name}/roles/{role-name}`.
@@ -56,8 +56,8 @@ exported:
 
 ## Import
 
-IAM member imports use space-delimited identifiers; the resource in question, the role, and the account.  This member resource can be imported using the `folder`, role, and account e.g.
+IAM member imports use space-delimited identifiers; the resource in question, the role, and the account.  This member resource can be imported using the `folder`, role, and member identity e.g.
 
 ```
-$ terraform import google_folder_iam_member.my_project "folder-name roles/viewer foo@example.com"
+$ terraform import google_folder_iam_member.my_project "folder-name roles/viewer user:foo@example.com"
 ```
